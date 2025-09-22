@@ -1,0 +1,62 @@
+### Node.js
+node_modules/
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+### Next.js
+.next/
+.next/cache/
+out/
+
+### Build outputs (generic)
+build/
+dist/
+
+### Testing
+coverage/
+.nyc_output/
+
+### Lint/format caches
+.eslintcache
+.stylelintcache
+
+### Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+### PWA (next-pwa generated files)
+public/sw.js
+public/workbox-*.js
+public/worker-*.js
+
+### Tooling/caches
+.turbo/
+.swc/
+.cache/
+.parcel-cache/
+.pnp.*
+.pnpm-store/
+
+### Deployment
+.vercel/
+
+### Editors/IDE
+.vscode/
+.idea/
+*.iml
+
+### OS
+.DS_Store
+Thumbs.db
+
+# Note: Do not ignore your PWA manifest and icons
+# public/manifest.webmanifest
+# public/icons/*

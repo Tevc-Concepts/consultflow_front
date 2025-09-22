@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens (CSS variables) */
+:root {
+    /* Brand */
+    --color-deep-navy: #0C2340;
+    /* Charcoal Black (supporting primary) */
+    --color-charcoal-black: #1A2533;
+    --color-forest-green: #003C2D;
+    /* Brand gradient endpoints */
+    --color-brand-start: var(--color-deep-navy);
+    --color-brand-end: var(--color-charcoal-black);
+    /* Spectrum */
+    --color-emerald: #3AD29F;
+    --color-teal: #12B5B1;
+    --color-cobalt: #2774FF;
+    --color-amber: #FFB547;
+    --color-coral: #FF6F59;
+    --color-violet: #8D4DFF;
+    /* Neutral */
+    --color-light: #F5F8F6;
+    --color-medium: #E8ECEB;
+    --color-light-gray: #8A8F98;
+    /* utility neutral */
+
+    /* Support accents from reference image */
+    --color-warm-copper: #D17C49;
+    --color-consul-place: #4ABDAC;
+
+    /* Base */
+    --color-background: var(--color-light);
+    --color-foreground: var(--color-deep-navy);
+}
+
+.dark {
+    --color-background: #0C1117;
+    /* dark bg */
+    --color-foreground: #E8ECEB;
+}
+
+html:focus-within {
+    scroll-behavior: smooth;
+}
+
+body {
+    @apply bg-background text-foreground antialiased;
+}
+
+/* Skip link for accessibility */
+.skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:rounded-full focus:bg-cobalt focus:text-white focus:shadow-soft;
+}
+
+/* Card utility following design system */
+.card {
+    @apply rounded-2xl shadow-soft hover:shadow-hover transition-shadow bg-white text-deep-navy;
+}
+
+/* Gradient helpers (brand) */
+.gradient-hero {
+    @apply bg-gradient-to-r from-deep-navy via-forest-green to-cobalt text-white;
+}
+
+/* Primary brand gradient helper */
+.gradient-brand {
+    @apply bg-gradient-to-r from-brand-start to-brand-end;
+}
+
+.gradient-donor {
+    @apply bg-gradient-to-r from-amber to-coral text-deep-navy;
+}
+
+/* Responsive spacing tokens (copy/paste helpers)
+    Usage: class="pad-responsive" → px-4 py-3 (mobile) and px-6 py-4 (desktop)
+*/
+.pad-responsive {
+    @apply px-4 py-3 md:px-6 md:py-4;
+}
+
+/* Primary Card utility (copy/paste)
+    rounded-2xl bg-gradient-to-r from-brand-start to-brand-end text-white
+    shadow-soft-1 on mobile, elevated md:shadow-soft with hover
+*/
+.primary-card {
+    @apply rounded-2xl gradient-brand text-white shadow-soft-1 md:shadow-soft hover:shadow-hover;
+}
+
+/* KPI chip utility (copy/paste)
+    White chip with subtle border and soft shadow
+*/
+.kpi-chip {
+    @apply bg-white border border-medium border-opacity-60 rounded-2xl shadow-soft-1;
+}
+
+.gradient-volunteer {
+    @apply bg-gradient-to-r from-emerald to-teal text-deep-navy;
+}
+
+.gradient-logistics {
+    @apply bg-gradient-to-r from-cobalt to-violet text-white;
+}
+
+/* Base typography */
+@layer base {
+    h1 {
+        @apply text-3xl md:text-4xl font-semibold tracking-tight;
+    }
+
+    h2 {
+        @apply text-2xl md:text-3xl font-semibold tracking-tight;
+    }
+
+    h3 {
+        @apply text-xl md:text-2xl font-semibold tracking-tight;
+    }
+
+    p {
+        @apply leading-relaxed;
+    }
+}

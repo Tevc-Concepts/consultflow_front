@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# Treat images and other binaries as binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.svg binary
+*.pdf binary
+
+# Keep lockfiles consistent
+package-lock.json -text
