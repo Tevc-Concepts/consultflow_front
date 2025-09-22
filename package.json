@@ -14,6 +14,8 @@
         "framer-motion": "^11.3.31",
         "html2canvas": "^1.4.1",
         "jspdf": "^3.0.3",
+        "xlsx": "^0.18.5",
+        "zustand": "^4.5.4",
         "next-pwa": "^5.6.0",
         "next": "^15.0.0",
         "sharp": "^0.33.4",

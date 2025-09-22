@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import axios from 'axios';
+import getApi from '@shared/api/client';
 import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 
@@ -75,7 +75,8 @@ export default function CompliancePage() {
         (async () => {
             setLoading(true); setError(null);
             try {
-                const res = await axios.get<TaxSummary>('/api/demo/tax-summary');
+                const api = getApi();
+                const res = await api.get<TaxSummary>('/api/demo/tax-summary');
                 const t = res.data ?? {};
                 setTax(t);
                 // Prefill VAT

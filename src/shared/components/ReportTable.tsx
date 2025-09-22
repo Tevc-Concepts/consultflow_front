@@ -1,9 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import axios from 'axios';
+import getApi from '@shared/api/client';
 import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
+import * as XLSX from 'xlsx';
+import { useAppStore, type AppState, convertAmount, formatCurrency } from '@shared/state/app';
 
 type Txn = {
     id: string;
@@ -35,13 +37,22 @@ type ReportsResp = {
     series: Array<{ date: string; revenue: number; expenses: number; cogs?: number }>;
 };
 
-function currency(n: number) {
-    try { return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(n); } catch { return `₦${Math.round(n).toLocaleString()}`; }
+function useCurrencyHelpers() {
+    const reportingCurrency = useAppStore((s: AppState) => s.reportingCurrency);
+    const fx = null; // could use last rate from API if needed in future
+    return {
+        reportingCurrency,
+        currency: (n: number) => formatCurrency(convertAmount(n, reportingCurrency, undefined), reportingCurrency)
+    } as const;
 }
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
 
 export default function ReportTable({ className, companyId = '', range: initialRange = '90', from: initialFrom, to: initialTo }: ReportTableProps) {
+    const { currency: fmt } = useCurrencyHelpers();
+    const reportingCurrency = useAppStore((s: AppState) => s.reportingCurrency);
+    const consolidated = useAppStore((s: AppState) => s.consolidated);
+    const selectedCompanyIds = useAppStore((s: AppState) => s.selectedCompanyIds);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [rows, setRows] = React.useState<PLNRow[]>([]);
@@ -67,7 +78,9 @@ export default function ReportTable({ className, companyId = '', range: initialR
         (async () => {
             setLoading(true); setError(null);
             try {
-                const res = await axios.get<ReportsResp>('/api/demo/reports', { params: { company: companyId, range, from, to } });
+                const api = getApi();
+                const companyParam = consolidated && selectedCompanyIds.length > 0 ? selectedCompanyIds.join(',') : companyId;
+                const res = await api.get<ReportsResp>('/api/demo/reports', { params: { company: companyParam, range, from, to, currency: reportingCurrency } });
                 const series = (res.data as any).series as ReportsResp['series'];
                 // Aggregate demo P&L from series
                 const rev = series.reduce((s, p) => s + (p.revenue ?? 0), 0);
@@ -134,7 +147,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                     const prevFrom = new Date(prevTo.getTime() - days * 24 * 3600 * 1000);
                     const fmt = (d: Date) => d.toISOString().slice(0, 10);
                     try {
-                        const prev = await axios.get<ReportsResp>('/api/demo/reports', { params: { company: companyId, range: 'custom', from: fmt(prevFrom), to: fmt(prevTo) } });
+                        const prev = await api.get<ReportsResp>('/api/demo/reports', { params: { company: companyParam, range: 'custom', from: fmt(prevFrom), to: fmt(prevTo), currency: reportingCurrency } });
                         const pSeries = (prev.data as any).series as ReportsResp['series'];
                         const prevRev = pSeries.reduce((s, p) => s + (p.revenue ?? 0), 0);
                         const prevCogs = pSeries.reduce((s, p) => s + (p.cogs ?? Math.round((p.revenue ?? 0) * 0.45)), 0);
@@ -165,7 +178,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [companyId, range, from, to]);
+    }, [companyId, consolidated, selectedCompanyIds, range, from, to, reportingCurrency]);
 
     const accounts = React.useMemo(() => ['all', 'Sales', 'COGS', 'Payroll', 'Rent', 'Marketing', 'Other'], []);
 
@@ -231,6 +244,14 @@ export default function ReportTable({ className, companyId = '', range: initialR
         URL.revokeObjectURL(url);
     }
 
+    function exportFullPLExcel() {
+        const data = rows.map((r, i) => ({ line: i + 1, label: r.label, amount: r.amount, delta: compareDelta[r.key] ?? 0 }));
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'P&L');
+        XLSX.writeFile(wb, 'profit_and_loss.xlsx');
+    }
+
     return (
         <Card className={className}>
             <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -275,7 +296,8 @@ export default function ReportTable({ className, companyId = '', range: initialR
                         <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />
                         Compare vs prior period
                     </label>
-                    <Button size="sm" variant="ghost" onClick={exportFullPLCsv}>Export P&L CSV</Button>
+                    <Button size="sm" variant="ghost" onClick={exportFullPLCsv}>Export CSV</Button>
+                    <Button size="sm" variant="ghost" onClick={exportFullPLExcel}>Export Excel</Button>
                 </div>
             </div>
 
@@ -322,9 +344,9 @@ export default function ReportTable({ className, companyId = '', range: initialR
                                                     )}
                                                 </div>
                                                 <div className="text-right font-semibold">
-                                                    <div>{currency(r.amount)}</div>
+                                                    <div>{fmt(r.amount)}</div>
                                                     {compare && r.key !== 'gp' && (
-                                                        <div className="text-xs text-deep-navy/70">Δ {currency(compareDelta[r.key] ?? 0)}</div>
+                                                        <div className="text-xs text-deep-navy/70">Δ {fmt(compareDelta[r.key] ?? 0)}</div>
                                                     )}
                                                 </div>
                                             </div>
@@ -353,7 +375,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                                                                             <td className="px-2 py-1">{t.date}</td>
                                                                             <td className="px-2 py-1">{t.account}</td>
                                                                             <td className="px-2 py-1">{t.description}</td>
-                                                                            <td className="px-2 py-1 text-right">{currency(t.amount)}</td>
+                                                                            <td className="px-2 py-1 text-right">{fmt(t.amount)}</td>
                                                                         </tr>
                                                                     ))}
                                                                 </tbody>
@@ -370,7 +392,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                         {/* pinned footer */}
                         <div className="sticky bottom-0 z-10 grid grid-cols-[1fr_140px] bg-white/95 backdrop-blur px-3 py-2 border-t border-medium/60">
                             <div className="font-semibold">Net Income</div>
-                            <div className="text-right font-semibold">{currency(netIncome)}</div>
+                            <div className="text-right font-semibold">{fmt(netIncome)}</div>
                         </div>
                     </div>
                 </div>
@@ -396,7 +418,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                                     onKeyDown={(e) => handleKeyToggle(e, r.key)}
                                 >
                                     <span className="font-medium">{r.label}</span>
-                                    <span className="font-semibold">{currency(r.amount)}</span>
+                                    <span className="font-semibold">{fmt(r.amount)}</span>
                                 </button>
                                 {r.expandable && isOpen && (
                                     <div className="mt-2 space-y-2 px-3">
@@ -409,7 +431,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                                                         <div className="font-medium">{t.account}</div>
                                                         <div className="text-deep-navy/70">{t.description}</div>
                                                     </div>
-                                                    <div className="text-right">{currency(t.amount)}</div>
+                                                    <div className="text-right">{fmt(t.amount)}</div>
                                                 </div>
                                             ))
                                         )}

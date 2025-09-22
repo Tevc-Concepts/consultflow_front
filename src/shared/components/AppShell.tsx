@@ -5,11 +5,14 @@ import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import InstallPrompt from './InstallPrompt';
 import OfflineToast from './OfflineToast';
+import { usePathname } from 'next/navigation';
 
 const KEY = 'consultflow:ui:sidebar-collapsed:v1';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
     const [collapsed, setCollapsed] = React.useState<boolean>(false);
+    const pathname = usePathname();
+    const hideChrome = pathname === '/' || pathname === '/onboarding' || pathname === '/login';
 
     React.useEffect(() => {
         try { const raw = localStorage.getItem(KEY); if (raw != null) setCollapsed(JSON.parse(raw)); } catch { }
@@ -17,6 +20,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     React.useEffect(() => {
         try { localStorage.setItem(KEY, JSON.stringify(collapsed)); } catch { }
     }, [collapsed]);
+
+    if (hideChrome) {
+        return (
+            <div className="min-h-screen">
+                <main id="content" className="relative focus:outline-none">
+                    {children}
+                    <InstallPrompt />
+                    <OfflineToast />
+                </main>
+            </div>
+        );
+    }
 
     return (
         <div className="flex min-h-screen transition-[width] duration-200 ease-in-out">

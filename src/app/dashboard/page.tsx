@@ -1,13 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import axios from 'axios';
+import getApi from '@shared/api/client';
 import dynamic from 'next/dynamic';
 import { KPI } from '@components/ui/KPI';
 import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import Skeleton from '@shared/components/Skeleton';
 import AIWidget from '@shared/components/AIWidget';
+import { useAppStore, type AppState, convertAmount, formatCurrency } from '@shared/state/app';
 
 type KPIKey = 'revenue' | 'grossProfit' | 'netIncome' | 'cashBalance' | 'burnRate';
 
@@ -36,6 +37,7 @@ type ReportsResponse = {
     kpis: KPIItem[];
     series: TimeseriesPoint[];
     insights: Insight[];
+    exchangeRates?: Array<{ month: string; usd: number; cfa: number }>;
 };
 
 const ResponsiveContainer: any = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any), { ssr: false });
@@ -49,6 +51,9 @@ const Legend: any = dynamic(() => import('recharts').then(m => m.Legend as any),
 type Range = '30' | '90' | 'custom';
 
 export default function DashboardPage() {
+    const reportingCurrency = useAppStore((s: AppState) => s.reportingCurrency);
+    const consolidated = useAppStore((s: AppState) => s.consolidated);
+    const selectedCompanyIds = useAppStore((s: AppState) => s.selectedCompanyIds);
     const [company, setCompany] = React.useState<string>('');
     const [range, setRange] = React.useState<Range>('30');
     const [customFrom, setCustomFrom] = React.useState<string>('');
@@ -62,8 +67,12 @@ export default function DashboardPage() {
         setLoading(true);
         setError(null);
         try {
-            const res = await axios.get<ReportsResponse>('/api/demo/reports', {
-                params: { company, range, from: customFrom, to: customTo }
+            const api = getApi();
+            const companyParam = consolidated && selectedCompanyIds.length > 0
+                ? selectedCompanyIds.join(',')
+                : company;
+            const res = await api.get<ReportsResponse>('/api/demo/reports', {
+                params: { company: companyParam, range, from: customFrom, to: customTo, currency: reportingCurrency }
             });
             setData(res.data);
             if (!company && res.data.companies?.length) {
@@ -74,7 +83,7 @@ export default function DashboardPage() {
         } finally {
             setLoading(false);
         }
-    }, [company, range, customFrom, customTo]);
+    }, [company, range, customFrom, customTo, reportingCurrency, consolidated, selectedCompanyIds]);
 
     React.useEffect(() => {
         fetchData();
@@ -94,6 +103,14 @@ export default function DashboardPage() {
         }
         return map;
     }, [data]);
+
+    const fxLast = React.useMemo(() => {
+        const ex = data?.exchangeRates;
+        if (!ex || ex.length === 0) return undefined;
+        return ex[ex.length - 1];
+    }, [data]);
+
+    const fmt = React.useCallback((n: number) => formatCurrency(convertAmount(n, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined), reportingCurrency), [reportingCurrency, fxLast]);
 
     return (
         <div className="container py-6 space-y-4">
@@ -192,7 +209,7 @@ export default function DashboardPage() {
                             <KPI
                                 key={i}
                                 label={item.data?.label ?? ''}
-                                value={item.data?.value ?? 0}
+                                value={fmt(item.data?.value ?? 0)}
                                 delta={item.data?.delta ?? 0}
                                 icon={item.icon}
                             />
@@ -212,7 +229,11 @@ export default function DashboardPage() {
                             <Skeleton className="h-full" />
                         ) : (
                             <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={data?.series ?? []} margin={{ left: 12, right: 12, top: 8, bottom: 8 }}>
+                                <LineChart data={(data?.series ?? []).map(p => ({
+                                    ...p,
+                                    revenue: Number(convertAmount(p.revenue, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined).toFixed(0)),
+                                    expenses: Number(convertAmount(p.expenses, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined).toFixed(0))
+                                }))} margin={{ left: 12, right: 12, top: 8, bottom: 8 }}>
                                     <XAxis dataKey="date" tick={{ fontSize: 12 }} hide={false} />
                                     <YAxis tick={{ fontSize: 12 }} width={40} />
                                     <Tooltip contentStyle={{ borderRadius: 12 }} />

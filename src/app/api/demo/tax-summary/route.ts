@@ -96,5 +96,10 @@ export async function GET() {
         ]
     };
 
-    return NextResponse.json({ calc, nat });
+    // Top-level shape aligned with DemoDB adapter
+    const vat = { totalPayable: netVAT, taxableSales: Math.round((VAT_output - VAT_input) / 0.06), inputVAT: VAT_input, outputVAT: VAT_output };
+    const paye = { total: payeWithheld, employees };
+    const wht = { total: Math.round(taxableProfit * 0.01) };
+
+    return NextResponse.json({ vat, paye, wht, calc, nat });
 }

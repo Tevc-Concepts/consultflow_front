@@ -2,7 +2,7 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
-import axios from 'axios';
+import getApi from '@shared/api/client';
 import { useDeck } from '@shared/state/deck';
 import { Card } from '@components/ui/Card';
 import Button from '@components/ui/Button';
@@ -217,9 +217,10 @@ export default function BuilderPage() {
         let mounted = true;
         (async () => {
             try {
+                const api = getApi();
                 const [r, t] = await Promise.all([
-                    axios.get<ReportsResp>('/api/demo/reports'),
-                    axios.get<TaxResp>('/api/demo/tax-summary')
+                    api.get<ReportsResp>('/api/demo/reports'),
+                    api.get<TaxResp>('/api/demo/tax-summary')
                 ]);
                 if (!mounted) return;
                 setReportsData({

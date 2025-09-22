@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import axios from 'axios';
+import getApi from '@shared/api/client';
 import { AnimatePresence, motion } from 'framer-motion';
 import Button from '@components/ui/Button';
 import BrandBadge from '@components/ui/BrandBadge';
@@ -47,7 +47,8 @@ export default function AIWidget({ className, companyId = 'c1', timeframe = 'las
         setShowSlide(false);
         try {
             const finalPrompt = `${mode} mode: ${prompt.trim()}`;
-            const res = await axios.post<AIResult>('/api/demo/ai', { prompt: finalPrompt, companyId, timeframe });
+            const api = getApi();
+            const res = await api.post<AIResult>('/api/demo/ai', { prompt: finalPrompt, companyId, timeframe });
             setResult(res.data);
         } catch (err) {
             setResult({

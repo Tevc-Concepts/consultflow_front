@@ -43,6 +43,11 @@ const items: NavItem[] = [
         )
     },
     {
+        href: '/forecast', label: 'Forecast', icon: (props) => (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" {...props}><path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M4 18l6-6 4 4 6-6" /></svg>
+        )
+    },
+    {
         href: '/upload', label: 'Upload', icon: (props) => (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" {...props}><path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" /></svg>
         )
