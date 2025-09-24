@@ -5,6 +5,7 @@ import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import DemoSwitch from '@shared/components/DemoSwitch';
 import { useAppStore, type Currency, type AppState } from '@shared/state/app';
+import OutboxPanel from '@shared/components/OutboxPanel';
 
 const companiesDemo = [
     { id: 'lagos', name: 'Lagos Retail Ltd', currency: 'NGN' },
@@ -19,6 +20,8 @@ export default function SettingsPage() {
     const setConsolidated = useAppStore((s: AppState) => s.setConsolidated);
     const selectedCompanyIds = useAppStore((s: AppState) => s.selectedCompanyIds);
     const setSelectedCompanyIds = useAppStore((s: AppState) => s.setSelectedCompanyIds);
+    const role = useAppStore((s: AppState) => s.role);
+    const setRole = useAppStore((s: AppState) => s.setRole);
 
     function toggleCompany(id: string) {
         const set = new Set(selectedCompanyIds);
@@ -53,6 +56,19 @@ export default function SettingsPage() {
                         </label>
                     </div>
                 </div>
+                <div className="mt-3 grid sm:grid-cols-2 gap-3">
+                    <div>
+                        <label className="text-xs text-deep-navy/70">Role</label>
+                        <select
+                            value={role}
+                            onChange={(e) => setRole(e.target.value as 'Consultant' | 'Client')}
+                            className="mt-1 w-full rounded-xl border border-medium/60 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-cobalt"
+                        >
+                            <option value="Consultant">Consultant</option>
+                            <option value="Client">Client</option>
+                        </select>
+                    </div>
+                </div>
             </Card>
 
             <Card>
@@ -73,6 +89,11 @@ export default function SettingsPage() {
                 </ul>
                 <div className="mt-2 text-xs text-deep-navy/70">Tip: select multiple companies then enable Consolidate to view group results.</div>
             </Card>
+
+            {/* Mock email outbox */}
+            <OutboxPanel />
         </div>
     );
 }
+
+// Note: Pages in Next.js App Router should not export arbitrary named components.

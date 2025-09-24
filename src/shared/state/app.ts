@@ -12,13 +12,18 @@ export type FXRate = {
 };
 
 export type AppState = {
+    // Data source selection is environment-driven; UI does not expose a switch now.
+    dataSource?: 'sqlite' | 'frappe' | 'demo';
     demoMode: boolean;
+    role: 'Consultant' | 'Client';
     reportingCurrency: Currency;
     consolidated: boolean;
     selectedCompanyIds: string[];
     onboardingComplete?: boolean;
     fx: FXRate[];
+    setDataSource: (v: 'sqlite' | 'frappe' | 'demo') => void;
     setDemoMode: (v: boolean) => void;
+    setRole: (r: 'Consultant' | 'Client') => void;
     setReportingCurrency: (c: Currency) => void;
     setConsolidated: (v: boolean) => void;
     setSelectedCompanyIds: (ids: string[]) => void;
@@ -28,26 +33,32 @@ export type AppState = {
 
 const STORAGE_KEY = 'consultflow:app:v1';
 
-function loadInitial(): Pick<AppState, 'demoMode' | 'reportingCurrency' | 'consolidated' | 'selectedCompanyIds' | 'onboardingComplete'> {
-    if (typeof window === 'undefined') return { demoMode: true, reportingCurrency: 'NGN', consolidated: false, selectedCompanyIds: [], onboardingComplete: false };
+function loadInitial(): Pick<AppState, 'dataSource' | 'demoMode' | 'role' | 'reportingCurrency' | 'consolidated' | 'selectedCompanyIds' | 'onboardingComplete'> {
+    const defaultDataSource = (process.env.NEXT_PUBLIC_DATA_SOURCE as any) || 'sqlite';
+    if (typeof window === 'undefined') return { dataSource: defaultDataSource, demoMode: defaultDataSource === 'demo', role: 'Consultant', reportingCurrency: 'NGN', consolidated: false, selectedCompanyIds: [], onboardingComplete: false } as any;
     try {
         const raw = window.localStorage.getItem(STORAGE_KEY);
         if (raw) return JSON.parse(raw);
     } catch { }
-    return { demoMode: true, reportingCurrency: 'NGN', consolidated: false, selectedCompanyIds: [], onboardingComplete: false };
+    return { dataSource: defaultDataSource, demoMode: defaultDataSource === 'demo', role: 'Consultant', reportingCurrency: 'NGN', consolidated: false, selectedCompanyIds: [], onboardingComplete: false } as any;
 }
 
 const initializer: StateCreator<AppState> = (set, get) => ({
-    demoMode: loadInitial().demoMode,
+    dataSource: 'sqlite',
+    demoMode: false,
+    role: (loadInitial() as any).role ?? 'Consultant',
     reportingCurrency: loadInitial().reportingCurrency,
     consolidated: loadInitial().consolidated,
     selectedCompanyIds: loadInitial().selectedCompanyIds,
     onboardingComplete: loadInitial().onboardingComplete,
     fx: [],
-    setDemoMode: (v: boolean) => {
-        set({ demoMode: v });
-        persist();
+    setDataSource: (_v: 'sqlite' | 'frappe' | 'demo') => {
+        // no-op at runtime; switching is now via env and app reload
     },
+    setDemoMode: (_v: boolean) => {
+        // no-op; demo mode disabled in UI
+    },
+    setRole: (r: 'Consultant' | 'Client') => { set({ role: r }); persist(); },
     setReportingCurrency: (c: Currency) => {
         set({ reportingCurrency: c });
         persist();
@@ -72,8 +83,8 @@ export const useAppStore = create<AppState>(initializer);
 
 function persist() {
     try {
-        const { demoMode, reportingCurrency, consolidated, selectedCompanyIds, onboardingComplete } = useAppStore.getState();
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ demoMode, reportingCurrency, consolidated, selectedCompanyIds, onboardingComplete }));
+        const { dataSource, demoMode, role, reportingCurrency, consolidated, selectedCompanyIds, onboardingComplete } = useAppStore.getState();
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ dataSource, demoMode, role, reportingCurrency, consolidated, selectedCompanyIds, onboardingComplete }));
     } catch { }
 }
 

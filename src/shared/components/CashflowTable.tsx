@@ -18,6 +18,9 @@ export default function CashflowTable() {
     const reportingCurrency = useAppStore((s: AppState) => s.reportingCurrency);
     const consolidated = useAppStore((s: AppState) => s.consolidated);
     const selectedCompanyIds = useAppStore((s: AppState) => s.selectedCompanyIds);
+    const dataSource = useAppStore((s: AppState) => s.dataSource);
+    const demoMode = useAppStore((s: AppState) => s.demoMode);
+    const api = React.useMemo(() => getApi(), [dataSource, demoMode]);
     const [company, setCompany] = React.useState<string>('');
     const [range, setRange] = React.useState<'30' | '90' | 'custom'>('90');
     const [from, setFrom] = React.useState('');
@@ -31,12 +34,13 @@ export default function CashflowTable() {
     const fmt = React.useCallback((n: number) => formatCurrency(convertAmount(n, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined), reportingCurrency), [reportingCurrency, fxLast]);
 
     React.useEffect(() => {
+        let alive = true;
         (async () => {
             setLoading(true); setError(null);
             try {
-                const api = getApi();
                 const companyParam = consolidated && selectedCompanyIds.length > 0 ? selectedCompanyIds.join(',') : company;
                 const res = await api.get<ReportsResp>('/api/demo/reports', { params: { company: companyParam, range, from, to, currency: reportingCurrency } });
+                if (!alive) return;
                 const series = (res.data as any).series as ReportsResp['series'];
                 const ex = (res.data as any).exchangeRates as ReportsResp['exchangeRates'];
                 if (ex && ex.length) setFxLast(ex[ex.length - 1]!);
@@ -60,9 +64,10 @@ export default function CashflowTable() {
                         { key: 'net', label: 'Net Change in Cash', amount: netChange },
                     ]);
                 }
-            } catch (e: any) { setError(e?.message ?? 'Failed to load'); } finally { setLoading(false); }
+            } catch (e: any) { if (alive) setError(e?.message ?? 'Failed to load'); } finally { if (alive) setLoading(false); }
         })();
-    }, [company, consolidated, selectedCompanyIds, range, from, to, reportingCurrency]);
+        return () => { alive = false; };
+    }, [api, company, consolidated, selectedCompanyIds, range, from, to, reportingCurrency]);
 
     function exportCsv() {
         const headers = ['line', 'label', 'amount'];
@@ -77,7 +82,7 @@ export default function CashflowTable() {
             <div className="mb-2 flex items-center gap-2">
                 <div className="inline-flex rounded-full border border-medium/60 p-0.5">
                     {(['30', '90', 'custom'] as const).map(r => (
-                        <button key={r} onClick={() => setRange(r)} className={['px-3 py-1.5 text-xs rounded-full', range === r ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/80 hover:bg-medium/40'].join(' ')} aria-pressed={range === r}>{r === '30' ? 'Last 30' : r === '90' ? 'Last 90' : 'Custom'}</button>
+                        <button key={r} onClick={() => setRange(r)} className={['px-3 py-1.5 text-xs rounded-full', range === r ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/90 hover:bg-medium/40'].join(' ')} aria-pressed={range === r}>{r === '30' ? 'Last 30' : r === '90' ? 'Last 90' : 'Custom'}</button>
                     ))}
                 </div>
                 {range === 'custom' && (
@@ -95,13 +100,13 @@ export default function CashflowTable() {
             <div className="max-h-[520px] overflow-auto rounded-2xl border border-medium/60">
                 <div role="table" aria-label="Cash Flow" className="w-full">
                     <div role="rowgroup">
-                        <div role="row" className="sticky top-0 z-10 grid grid-cols-[1fr_160px] px-3 py-2 text-xs uppercase text-deep-navy/70 bg-white/95 backdrop-blur">
+                        <div role="row" className="sticky top-0 z-10 grid grid-cols-[1fr_160px] px-3 py-2 text-xs uppercase text-deep-navy/80 bg-white/95 backdrop-blur">
                             <div>Line</div>
                             <div className="text-right">Amount</div>
                         </div>
                     </div>
                     <div role="rowgroup">
-                        {loading ? (<div className="px-3 py-6 text-sm text-deep-navy/70">Loading…</div>) : error ? (<div className="px-3 py-6 text-sm text-coral">{error}</div>) : (
+                        {loading ? (<div className="px-3 py-6 text-sm text-deep-navy/80">Loading…</div>) : error ? (<div className="px-3 py-6 text-sm text-coral">{error}</div>) : (
                             rows.map(r => (
                                 <div key={r.key} role="row" className="grid grid-cols-[1fr_160px] items-center px-3 py-2 border-t border-medium/60">
                                     <div className="font-medium">{r.label}</div>

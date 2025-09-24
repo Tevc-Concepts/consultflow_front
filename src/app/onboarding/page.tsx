@@ -4,6 +4,7 @@ import * as React from 'react';
 import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import { useAppStore, type AppState, type Currency } from '@shared/state/app';
+import { useNotifications } from '@shared/state/notifications';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -29,6 +30,7 @@ export default function OnboardingPage() {
     const [step, setStep] = React.useState<Step>(1);
     const [role, setRole] = React.useState<'Consultant' | 'Client' | null>(null);
     const [mode, setMode] = React.useState<'demo' | 'connect' | null>('demo');
+    const notify = useNotifications(s => s.add);
 
     function toggleCompany(id: string) {
         const set = new Set(selectedCompanyIds);
@@ -47,8 +49,10 @@ export default function OnboardingPage() {
     function finish() {
         // Persist demo mode if chosen
         setDemoMode(mode !== 'connect');
+        if (role) useAppStore.getState().setRole(role);
         setConsolidated(selectedCompanyIds.length > 1 ? true : consolidated);
         setOnboardingComplete(true);
+        notify({ title: 'Welcome to Consultflow', message: `Role: ${role ?? 'Consultant'} • Mode: ${mode}`, kind: 'success' });
         router.push('/dashboard');
     }
 
@@ -66,11 +70,11 @@ export default function OnboardingPage() {
                                 <h2 className="text-xl font-semibold">Your role</h2>
                                 <p className="text-deep-navy/70 mt-1">Choose how you’ll use Consultflow today.</p>
                                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <button onClick={() => setRole('Consultant')} className={["card p-4 text-left", role === 'Consultant' ? 'ring-2 ring-cobalt' : ''].join(' ')}>
+                                    <button onClick={() => { setRole('Consultant'); useAppStore.getState().setRole('Consultant'); }} className={["card p-4 text-left", role === 'Consultant' ? 'ring-2 ring-cobalt' : ''].join(' ')}>
                                         <div className="font-medium">Consultant</div>
                                         <div className="text-sm text-deep-navy/70">Manage multiple clients, consolidate entities.</div>
                                     </button>
-                                    <button onClick={() => setRole('Client')} className={["card p-4 text-left", role === 'Client' ? 'ring-2 ring-cobalt' : ''].join(' ')}>
+                                    <button onClick={() => { setRole('Client'); useAppStore.getState().setRole('Client'); }} className={["card p-4 text-left", role === 'Client' ? 'ring-2 ring-cobalt' : ''].join(' ')}>
                                         <div className="font-medium">Client</div>
                                         <div className="text-sm text-deep-navy/70">Single company view, simple KPIs and reporting.</div>
                                     </button>

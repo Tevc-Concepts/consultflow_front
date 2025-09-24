@@ -78,7 +78,7 @@ export default function MobileNav() {
                             className={classNames(
                                 'flex flex-col items-center justify-center gap-1 py-2 text-xs outline-none',
                                 'hover:bg-medium/40 focus-visible:ring-2 focus-visible:ring-cobalt',
-                                active ? 'text-deep-navy font-medium' : 'text-deep-navy/70'
+                                active ? 'text-deep-navy font-medium' : 'text-deep-navy/80'
                             )}
                         >
                             <item.icon className="h-5 w-5" />

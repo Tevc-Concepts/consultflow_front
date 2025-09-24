@@ -86,7 +86,7 @@ export default function Sidebar({ collapsed = false, onToggle }: { collapsed?: b
                         <span className="font-semibold">{collapsed ? 'CF' : 'Consultflow'}</span>
                     )}
                 </Link>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
                     {canInstall && (
                         <button
                             onClick={() => void promptInstall()}
@@ -120,7 +120,7 @@ export default function Sidebar({ collapsed = false, onToggle }: { collapsed?: b
                                     'relative flex items-center rounded-xl outline-none',
                                     collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2',
                                     'hover:bg-medium/40 focus-visible:ring-2 focus-visible:ring-cobalt focus-visible:ring-offset-2',
-                                    active ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/80'
+                                    active ? 'bg-medium/60 text-deep-navy font-semibold' : 'text-deep-navy/90'
                                 )}
                                 title={collapsed ? item.label : undefined}
                             >

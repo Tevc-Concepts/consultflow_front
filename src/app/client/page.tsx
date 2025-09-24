@@ -4,12 +4,17 @@ import * as React from 'react';
 import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import PLPreview from '@shared/components/PLPreview';
+import { useNotifications } from '@shared/state/notifications';
+import { useApprovals } from '@shared/state/approvals';
+import { useAppStore } from '@shared/state/app';
+import ApprovalStatusBadge from '@shared/components/ApprovalStatusBadge';
+import ApprovalTimeline from '@shared/components/ApprovalTimeline';
 
 type Client = { id: string; name: string; org: string; email: string };
 type Report = { id: string; title: string; period: string; kind: 'P&L' | 'Balance Sheet' | 'Cash Flow'; };
 type Comment = { id: string; author: string; text: string; ts: number };
 type Permissions = { viewOnly: boolean; canComment: boolean };
-type Approval = { name: string; ts: number } | null;
+// Approvals are handled via shared approvals store
 
 const demoClients: Client[] = [
     { id: 'c-1', name: 'Jane Doe', org: 'Acme Ltd', email: 'jane@acme.com' },
@@ -36,14 +41,13 @@ const STORAGE_KEY = 'consultflow:client-portal:v1';
 type Store = {
     permissions: Record<string, Permissions>; // key: clientId
     comments: Record<string, Comment[]>;      // key: `${clientId}:${reportId}`
-    approvals: Record<string, Approval>;      // key: `${clientId}:${reportId}`
 };
 
 function usePortalStore() {
     const [store, setStore] = React.useState<Store>(() => {
-        if (typeof window === 'undefined') return { permissions: {}, comments: {}, approvals: {} };
+        if (typeof window === 'undefined') return { permissions: {}, comments: {} } as Store;
         try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) return JSON.parse(raw) as Store; } catch { }
-        return { permissions: {}, comments: {}, approvals: {} };
+        return { permissions: {}, comments: {} } as Store;
     });
     React.useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch { } }, [store]);
     return [store, setStore] as const;
@@ -53,6 +57,9 @@ function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}
 
 export default function ClientPortalPage() {
     const [store, setStore] = usePortalStore();
+    const notify = useNotifications(s => s.add);
+    const role = useAppStore(s => s.role);
+    const approvals = useApprovals();
     const [selectedClientId, setSelectedClientId] = React.useState<string | null>(demoClients[0]?.id ?? null);
     const [selectedReportId, setSelectedReportId] = React.useState<string | null>(null);
     const [slideOpen, setSlideOpen] = React.useState(false);
@@ -65,7 +72,10 @@ export default function ClientPortalPage() {
     const perms: Permissions = React.useMemo(() => store.permissions[client?.id ?? ''] ?? { viewOnly: false, canComment: true }, [store.permissions, client?.id]);
     const commentsKey = client && report ? `${client.id}:${report.id}` : '';
     const comments = (commentsKey && store.comments[commentsKey]) ? store.comments[commentsKey] : [];
-    const approval = (commentsKey && store.approvals[commentsKey] !== undefined) ? store.approvals[commentsKey] : null;
+    const approvalKey = client && report ? `client:${client.id}:${report.id}` : '';
+    const status = approvalKey ? approvals.getStatus(approvalKey) : 'Draft';
+    const history = approvalKey ? approvals.getHistory(approvalKey) : [];
+    React.useEffect(() => { if (approvalKey) approvals.getOrInit(approvalKey, 'ClientApproval'); }, [approvals, approvalKey]);
 
     function updatePerms(next: Partial<Permissions>) {
         if (!client) return;
@@ -79,19 +89,21 @@ export default function ClientPortalPage() {
         setStore(s => ({ ...s, comments: { ...s.comments, [key]: [...(s.comments[key] ?? []), item] } }));
     }
 
-    function setApproval(name: string) {
-        if (!client || !report) return;
-        const key = `${client.id}:${report.id}`;
-        setStore(s => ({ ...s, approvals: { ...s.approvals, [key]: { name: name.trim() || client.name, ts: Date.now() } } }));
+    function approve(name: string) {
+        if (!client || !report || !approvalKey) return;
+        const approver = name.trim() || client.name;
+        approvals.transition({ key: approvalKey, action: 'approve', by: approver });
+        notify({ title: 'Report approved', message: `${report.title} approved by ${approver}`, kind: 'success' });
+    }
+
+    function requestChanges(comment: string) {
+        if (!client || !report || !approvalKey) return;
+        const by = client.name;
+        approvals.transition({ key: approvalKey, action: 'request_changes', by, comment });
+        notify({ title: 'Changes requested', message: `${report.title}: ${comment || 'Please review and revise.'}`, kind: 'warning' });
     }
 
     // Mobile slide-over: open detail on small screens when selecting a client
-    function openDetail(cId: string) {
-        setSelectedClientId(cId);
-        setSelectedReportId(null);
-        setSlideOpen(true);
-    }
-
     function closeDetail() { setSlideOpen(false); }
 
     return (
@@ -143,8 +155,11 @@ export default function ClientPortalPage() {
                         addComment={addComment}
                         perms={perms}
                         onPermsChange={updatePerms}
-                        approval={approval}
-                        setApproval={setApproval}
+                        status={status}
+                        history={history}
+                        canApprove={role === 'Client' && status === 'ClientApproval'}
+                        onApprove={approve}
+                        onRequestChanges={requestChanges}
                     />
                 </div>
 
@@ -163,14 +178,17 @@ export default function ClientPortalPage() {
                             client={client}
                             reports={reports}
                             report={report}
-                            onSelectReport={(id) => { setSelectedReportId(id); }}
+                            onSelectReport={(id: string) => { setSelectedReportId(id); }}
                             comments={comments}
                             canComment={!perms.viewOnly && perms.canComment}
                             addComment={addComment}
                             perms={perms}
                             onPermsChange={updatePerms}
-                            approval={approval}
-                            setApproval={setApproval}
+                            status={status}
+                            history={history}
+                            canApprove={role === 'Client' && status === 'ClientApproval'}
+                            onApprove={approve}
+                            onRequestChanges={requestChanges}
                         />
                     </div>
                 </div>
@@ -179,7 +197,7 @@ export default function ClientPortalPage() {
     );
 }
 
-function DetailPanel({ client, reports, report, onSelectReport, comments, canComment, addComment, perms, onPermsChange, approval, setApproval }: {
+type DetailPanelProps = {
     client: Client | null;
     reports: Report[];
     report: Report | null;
@@ -189,12 +207,18 @@ function DetailPanel({ client, reports, report, onSelectReport, comments, canCom
     addComment: (author: string, text: string) => void;
     perms: Permissions;
     onPermsChange: (next: Partial<Permissions>) => void;
-    approval: Approval;
-    setApproval: (name: string) => void;
-}) {
+    status: string;
+    history: any[];
+    canApprove: boolean;
+    onApprove: (name: string) => void;
+    onRequestChanges: (comment: string) => void;
+};
+
+function DetailPanel({ client, reports, report, onSelectReport, comments, canComment, addComment, perms, onPermsChange, status, history, canApprove, onApprove, onRequestChanges }: DetailPanelProps) {
     const [author, setAuthor] = React.useState('');
     const [text, setText] = React.useState('');
     const [approvalName, setApprovalName] = React.useState('');
+    const [changeComment, setChangeComment] = React.useState('');
 
     if (!client) return (
         <Card>
@@ -267,20 +291,24 @@ function DetailPanel({ client, reports, report, onSelectReport, comments, canCom
                         <div className="rounded-xl border border-medium/60 p-3">
                             <div className="flex items-center justify-between">
                                 <div className="text-sm font-medium">Approval</div>
-                                {approval ? (
-                                    <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">Approved</span>
-                                ) : (
-                                    <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700">Pending</span>
-                                )}
+                                <ApprovalStatusBadge status={status as any} />
                             </div>
-                            {approval ? (
-                                <div className="mt-2 text-sm text-deep-navy/80">Approved by <span className="font-medium">{approval.name}</span> on {new Date(approval.ts).toLocaleString()}</div>
-                            ) : (
+                            {canApprove && (
                                 <div className="mt-2 flex flex-col sm:flex-row gap-2">
-                                    <input placeholder="Client name" value={approvalName} onChange={(e) => setApprovalName(e.target.value)} className="rounded-xl border border-medium/60 px-3 py-2 text-sm flex-1" />
-                                    <Button size="sm" onClick={() => setApproval(approvalName)} disabled={perms.viewOnly}>Approve</Button>
+                                    <input placeholder="Your name" value={approvalName} onChange={(e) => setApprovalName(e.target.value)} className="rounded-xl border border-medium/60 px-3 py-2 text-sm flex-1" />
+                                    <Button size="sm" onClick={() => onApprove(approvalName)} disabled={perms.viewOnly}>Approve</Button>
                                 </div>
                             )}
+                            {status === 'ClientApproval' && (
+                                <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                                    <input placeholder="Request changes (optional)" value={changeComment} onChange={(e) => setChangeComment(e.target.value)} className="rounded-xl border border-medium/60 px-3 py-2 text-sm flex-1" />
+                                    <Button size="sm" variant="ghost" onClick={() => onRequestChanges(changeComment)} disabled={perms.viewOnly}>Request Changes</Button>
+                                </div>
+                            )}
+                            <div className="mt-3">
+                                <div className="text-sm font-medium mb-1">History</div>
+                                <ApprovalTimeline items={history as any} />
+                            </div>
                         </div>
 
                         {/* Comments */}

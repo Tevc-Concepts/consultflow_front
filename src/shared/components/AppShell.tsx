@@ -6,6 +6,8 @@ import MobileNav from './MobileNav';
 import InstallPrompt from './InstallPrompt';
 import OfflineToast from './OfflineToast';
 import { usePathname } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
+import Notifications from '@shared/components/Notifications';
 
 const KEY = 'consultflow:ui:sidebar-collapsed:v1';
 
@@ -24,8 +26,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (hideChrome) {
         return (
             <div className="min-h-screen">
+                <Notifications />
                 <main id="content" className="relative focus:outline-none">
-                    {children}
+                    <AnimatePresence mode="popLayout" initial={false}>
+                        <motion.div
+                            key={pathname}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8 }}
+                            transition={{ duration: 0.18, ease: 'easeOut' }}
+                        >
+                            {children}
+                        </motion.div>
+                    </AnimatePresence>
                     <InstallPrompt />
                     <OfflineToast />
                 </main>
@@ -41,7 +54,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </aside>
             {/* Main content */}
             <main id="content" className="flex-1 relative pb-16 md:pb-0 focus:outline-none">
-                {children}
+                <Notifications />
+                <AnimatePresence mode="popLayout" initial={false}>
+                    <motion.div
+                        key={pathname}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                        data-testid="route-transition"
+                    >
+                        {children}
+                    </motion.div>
+                </AnimatePresence>
                 <InstallPrompt />
                 <OfflineToast />
                 {/* Mobile bottom nav */}

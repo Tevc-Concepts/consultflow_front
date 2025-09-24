@@ -89,58 +89,7 @@ You are assisting in building **Consultflow Frontend** using:
 ```
 
 
-## UI Guidelines
-
-* Gradients for headers and hero sections (`bg-gradient-to-r from-indigo-500 to-purple-600`)
-* Soft shadows (`shadow-lg`, `shadow-indigo-200/50`)
-* Rounded corners (`rounded-2xl`)
-* Minimal, accessible typography
-* Consistent card-based layout with hover states
-* Support dark mode
-
-## Design System Rules (Consultflow Brand)
-
-- **Primary Colors**  
-  - Deep Navy `#0C2340` (main brand, headers, CTAs)  
-  - Forest Green `#003C2D` (secondary brand, accents)  
-
-- **Spectrum Colors** (for features, role highlights, infographics):  
-  - Emerald `#3AD29F`  
-  - Teal `#12B5B1`  
-  - Cobalt `#2774FF`  
-  - Amber `#FFB547`  
-  - Coral `#FF6F59`  
-  - Violet `#8D4DFF`  
-
-- **Neutral Colors** (backgrounds, cards, typography balance):  
-  - Light `#F5F8F6`  
-  - Medium `#E8ECEB`  
-
-### Gradient & Shadow Usage
-- Use **gradient overlays** to give depth to hero, CTA, and section dividers. Examples:  
-  - `from-deep-navy via-forest-green to-cobalt` for corporate/NGO sections.  
-  - `from-amber to-coral` for donation-related highlights.  
-  - `from-emerald to-teal` for volunteer & logistics sections.  
-- **Card shadows** must feel soft but modern:  
-  - Default card: `shadow-lg shadow-deep-navy/10`  
-  - Hover: `shadow-xl shadow-cobalt/20` with slight scale via `framer-motion`.  
-- **Rounded corners**: always `rounded-2xl` for cards and `rounded-full` for badges/buttons.  
-
-### Landing Page Enforcement
-- The marketing landing page **must follow the provided mockup**:  
-  - Hero with gradient background, logo top-left, nav items top-right.  
-  - Sections: About, Services, Contact, each with consistent use of brand colors.  
-  - Icons/illustrations can use **Spectrum Colors** as accents.  
-  - Typography hierarchy:  
-    - Headings: serif or display-like font (via `next/font`), Deep Navy or Forest Green.  
-    - Body: modern sans-serif, neutral colors.  
-
-### Role-based Section Visual Identity
-- Donor flows: Coral + Amber  
-- NGO flows: Forest Green + Teal  
-- Corporate: Deep Navy + Cobalt  
-- Volunteers: Emerald + Teal  
-- Logistics: Cobalt + Violet  
+ 
 
 ### High-level feature list (frontend)
 

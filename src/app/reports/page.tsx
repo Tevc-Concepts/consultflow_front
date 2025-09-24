@@ -9,6 +9,10 @@ import ReportTable from '@shared/components/ReportTable';
 import BalanceSheetTable from '@shared/components/BalanceSheetTable';
 import CashflowTable from '@shared/components/CashflowTable';
 import AdjustmentsPanel from '@shared/components/AdjustmentsPanel';
+import ApprovalStatusBadge from '@shared/components/ApprovalStatusBadge';
+import ApprovalTimeline from '@shared/components/ApprovalTimeline';
+import { useApprovals } from '@shared/state/approvals';
+import { useAppStore } from '@shared/state/app';
 
 function ReportsPageInner() {
     const params = useSearchParams();
@@ -17,6 +21,20 @@ function ReportsPageInner() {
     const from = params.get('from') ?? undefined;
     const to = params.get('to') ?? undefined;
     const tab = (params.get('tab') as 'pl' | 'bs' | 'cf' | null) || 'pl';
+    const role = useAppStore(s => s.role);
+    const selectedCompanyIds = useAppStore(s => s.selectedCompanyIds);
+    const consolidated = useAppStore(s => s.consolidated);
+    const key = React.useMemo(() => {
+        // Build a simple composite key for approvals scoped to the current view.
+        const co = consolidated ? 'GROUP' : (selectedCompanyIds.join(',') || 'ALL');
+        const range = rangeParam ?? (from && to ? `${from}:${to}` : 'default');
+        return `reports:${tab}:${co}:${range}`;
+    }, [tab, consolidated, selectedCompanyIds, rangeParam, from, to]);
+    const getOrInit = useApprovals(s => s.getOrInit);
+    const transition = useApprovals(s => s.transition);
+    const status = useApprovals(React.useCallback(s => s.getStatus(key), [key]));
+    const history = useApprovals(React.useCallback(s => s.getHistory(key), [key]));
+    React.useEffect(() => { getOrInit(key, 'Draft'); }, [getOrInit, key]);
     return (
         <>
             <div className="flex items-center gap-2">
@@ -38,6 +56,29 @@ function ReportsPageInner() {
                 </div>
             </div>
             <Card className="mt-3">
+                {/* Header with status and actions */}
+                <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm text-deep-navy/70">Status</div>
+                    <div className="flex items-center gap-2">
+                        <ApprovalStatusBadge status={status as any} />
+                        {role === 'Consultant' && (
+                            <div className="inline-flex gap-2">
+                                {status === 'Draft' && (
+                                    <button className="text-xs px-2 py-1 rounded-full bg-cobalt text-white hover:opacity-90" onClick={() => transition({ key, action: 'submit_for_review', by: 'Consultant' })}>Submit for Review</button>
+                                )}
+                                {status === 'AccountantReview' && (
+                                    <>
+                                        <button className="text-xs px-2 py-1 rounded-full bg-amber-500 text-white hover:opacity-90" onClick={() => transition({ key, action: 'send_to_client', by: 'Accountant' })}>Send to Client</button>
+                                        <button className="text-xs px-2 py-1 rounded-full bg-coral text-white hover:opacity-90" onClick={() => transition({ key, action: 'request_changes', by: 'Accountant', comment: 'Needs corrections' })}>Request Changes</button>
+                                    </>
+                                )}
+                                {status === 'ChangesRequested' && (
+                                    <button className="text-xs px-2 py-1 rounded-full bg-cobalt text-white hover:opacity-90" onClick={() => transition({ key, action: 'submit_for_review', by: 'Consultant', comment: 'Addressed changes' })}>Resubmit</button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
                 {tab === 'pl' && (<>
                     <h2 className="text-lg font-semibold mb-2">Profit &amp; Loss</h2>
                     <ReportTable range={rangeParam} from={from} to={to} />
@@ -50,6 +91,10 @@ function ReportsPageInner() {
                     <h2 className="text-lg font-semibold mb-2">Cash Flow</h2>
                     <CashflowTable />
                 </>)}
+                <div className="mt-4">
+                    <div className="text-sm font-medium mb-1">Approval history</div>
+                    <ApprovalTimeline items={history as any} />
+                </div>
             </Card>
         </>
     );

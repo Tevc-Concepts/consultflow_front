@@ -23,7 +23,7 @@ export default function InstallPrompt() {
             <div className="rounded-2xl bg-white shadow-soft border border-medium/60 p-3 md:p-4 flex items-center justify-between gap-3">
                 <div>
                     <div className="text-sm font-medium text-deep-navy">Install Consultflow</div>
-                    <div className="text-xs text-deep-navy/70">Add to your home screen for a faster, app-like experience.</div>
+                    <div className="text-xs text-deep-navy/80">Add to your home screen for a faster, app-like experience.</div>
                 </div>
                 <div className="flex items-center gap-2">
                     <button

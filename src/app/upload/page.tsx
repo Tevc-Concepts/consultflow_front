@@ -28,7 +28,7 @@ export default function UploadPage() {
         setLoading(true);
         setData(null);
         try {
-            const res = await fetch('/api/demo/upload', { method: 'POST', body: form });
+            const res = await fetch('/api/local/upload', { method: 'POST', body: form });
             const json = (await res.json()) as Preview;
             setData(json);
         } catch (err: any) {

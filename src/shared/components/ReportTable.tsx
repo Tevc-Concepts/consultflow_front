@@ -53,6 +53,9 @@ export default function ReportTable({ className, companyId = '', range: initialR
     const reportingCurrency = useAppStore((s: AppState) => s.reportingCurrency);
     const consolidated = useAppStore((s: AppState) => s.consolidated);
     const selectedCompanyIds = useAppStore((s: AppState) => s.selectedCompanyIds);
+    const dataSource = useAppStore((s: AppState) => s.dataSource);
+    const demoMode = useAppStore((s: AppState) => s.demoMode);
+    const api = React.useMemo(() => getApi(), [dataSource, demoMode]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [rows, setRows] = React.useState<PLNRow[]>([]);
@@ -75,12 +78,13 @@ export default function ReportTable({ className, companyId = '', range: initialR
     const [to, setTo] = React.useState<string>(initialTo ?? '');
 
     React.useEffect(() => {
+        let alive = true;
         (async () => {
             setLoading(true); setError(null);
             try {
-                const api = getApi();
                 const companyParam = consolidated && selectedCompanyIds.length > 0 ? selectedCompanyIds.join(',') : companyId;
                 const res = await api.get<ReportsResp>('/api/demo/reports', { params: { company: companyParam, range, from, to, currency: reportingCurrency } });
+                if (!alive) return;
                 const series = (res.data as any).series as ReportsResp['series'];
                 // Aggregate demo P&L from series
                 const rev = series.reduce((s, p) => s + (p.revenue ?? 0), 0);
@@ -135,6 +139,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                     if (eOther) all.push({ id: uid(), date: d, account: 'Other', description: 'Misc expenses', amount: -eOther, type: 'Expense' });
                 }
 
+                if (!alive) return;
                 setRows(plRows);
                 setTxns(all);
                 setNetIncome(netIncome);
@@ -148,6 +153,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                     const fmt = (d: Date) => d.toISOString().slice(0, 10);
                     try {
                         const prev = await api.get<ReportsResp>('/api/demo/reports', { params: { company: companyParam, range: 'custom', from: fmt(prevFrom), to: fmt(prevTo), currency: reportingCurrency } });
+                        if (!alive) return;
                         const pSeries = (prev.data as any).series as ReportsResp['series'];
                         const prevRev = pSeries.reduce((s, p) => s + (p.revenue ?? 0), 0);
                         const prevCogs = pSeries.reduce((s, p) => s + (p.cogs ?? Math.round((p.revenue ?? 0) * 0.45)), 0);
@@ -174,11 +180,12 @@ export default function ReportTable({ className, companyId = '', range: initialR
             } catch (e: any) {
                 setError(e?.message ?? 'Failed to load');
             } finally {
-                setLoading(false);
+                if (alive) setLoading(false);
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [companyId, consolidated, selectedCompanyIds, range, from, to, reportingCurrency]);
+        return () => { alive = false; };
+    }, [api, companyId, consolidated, selectedCompanyIds, range, from, to, reportingCurrency]);
 
     const accounts = React.useMemo(() => ['all', 'Sales', 'COGS', 'Payroll', 'Rent', 'Marketing', 'Other'], []);
 
@@ -279,7 +286,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                 <div className="inline-flex rounded-full border border-medium/60 p-0.5">
                     {(['30', '90', 'custom'] as Range[]).map(r => (
                         <button key={r} onClick={() => setRange(r)}
-                            className={['px-3 py-1.5 text-xs rounded-full', range === r ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/80 hover:bg-medium/40'].join(' ')}
+                            className={['px-3 py-1.5 text-xs rounded-full', range === r ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/90 hover:bg-medium/40'].join(' ')}
                             aria-pressed={range === r}>{r === '30' ? 'Last 30' : r === '90' ? 'Last 90' : 'Custom'}</button>
                     ))}
                 </div>
@@ -292,7 +299,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
                     </div>
                 )}
                 <div className="ml-auto flex items-center gap-2">
-                    <label className="inline-flex items-center gap-2 text-xs text-deep-navy/80">
+                    <label className="inline-flex items-center gap-2 text-xs text-deep-navy/90">
                         <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />
                         Compare vs prior period
                     </label>
@@ -306,14 +313,14 @@ export default function ReportTable({ className, companyId = '', range: initialR
                 <div className="max-h-[520px] overflow-auto rounded-2xl border border-medium/60">
                     <div role="table" aria-label="Profit and Loss" className="w-full">
                         <div role="rowgroup">
-                            <div role="row" className="sticky top-0 z-10 grid grid-cols-[1fr_140px] px-3 py-2 text-xs uppercase text-deep-navy/70 bg-white/95 backdrop-blur">
+                            <div role="row" className="sticky top-0 z-10 grid grid-cols-[1fr_140px] px-3 py-2 text-xs uppercase text-deep-navy/80 bg-white/95 backdrop-blur">
                                 <div>Category</div>
                                 <div className="text-right">Amount</div>
                             </div>
                         </div>
                         <div role="rowgroup">
                             {loading ? (
-                                <div className="px-3 py-6 text-sm text-deep-navy/70">Loading…</div>
+                                <div className="px-3 py-6 text-sm text-deep-navy/80">Loading…</div>
                             ) : error ? (
                                 <div className="px-3 py-6 text-sm text-coral">{error}</div>
                             ) : (
@@ -346,18 +353,18 @@ export default function ReportTable({ className, companyId = '', range: initialR
                                                 <div className="text-right font-semibold">
                                                     <div>{fmt(r.amount)}</div>
                                                     {compare && r.key !== 'gp' && (
-                                                        <div className="text-xs text-deep-navy/70">Δ {fmt(compareDelta[r.key] ?? 0)}</div>
+                                                        <div className="text-xs text-deep-navy/80">Δ {fmt(compareDelta[r.key] ?? 0)}</div>
                                                     )}
                                                 </div>
                                             </div>
                                             {r.expandable && isOpen && (
                                                 <div role="region" aria-labelledby={rowId} id={panelId} className="px-3 pb-3">
                                                     <div className="flex items-center justify-between mb-2">
-                                                        <div className="text-xs text-deep-navy/70">{drill.length} transactions</div>
+                                                        <div className="text-xs text-deep-navy/80">{drill.length} transactions</div>
                                                         <Button size="sm" variant="ghost" onClick={() => exportCsvForRow(r, drill)}>Export CSV</Button>
                                                     </div>
                                                     {drill.length === 0 ? (
-                                                        <div className="text-sm text-deep-navy/70">No transactions for current filters.</div>
+                                                        <div className="text-sm text-deep-navy/80">No transactions for current filters.</div>
                                                     ) : (
                                                         <div className="overflow-x-auto">
                                                             <table className="min-w-full text-sm border border-medium/60 rounded-xl">
@@ -401,7 +408,7 @@ export default function ReportTable({ className, companyId = '', range: initialR
             {/* Mobile simplified list */}
             <div className="md:hidden divide-y divide-medium/60">
                 {loading ? (
-                    <div className="px-3 py-6 text-sm text-deep-navy/70">Loading…</div>
+                    <div className="px-3 py-6 text-sm text-deep-navy/80">Loading…</div>
                 ) : error ? (
                     <div className="px-3 py-6 text-sm text-coral">{error}</div>
                 ) : (
@@ -423,20 +430,20 @@ export default function ReportTable({ className, companyId = '', range: initialR
                                 {r.expandable && isOpen && (
                                     <div className="mt-2 space-y-2 px-3">
                                         {drill.length === 0 ? (
-                                            <div className="text-sm text-deep-navy/70">No transactions for current filters.</div>
+                                            <div className="text-sm text-deep-navy/90">No transactions for current filters.</div>
                                         ) : (
                                             drill.slice(0, 6).map(t => (
                                                 <div key={t.id} className="flex items-center justify-between text-sm">
                                                     <div>
                                                         <div className="font-medium">{t.account}</div>
-                                                        <div className="text-deep-navy/70">{t.description}</div>
+                                                        <div className="text-deep-navy/80">{t.description}</div>
                                                     </div>
                                                     <div className="text-right">{fmt(t.amount)}</div>
                                                 </div>
                                             ))
                                         )}
                                         {drill.length > 6 && (
-                                            <div className="text-xs text-deep-navy/70">Showing 6 of {drill.length}. Refine with filters above.</div>
+                                            <div className="text-xs text-deep-navy/80">Showing 6 of {drill.length}. Refine with filters above.</div>
                                         )}
                                     </div>
                                 )}

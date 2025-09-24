@@ -10,17 +10,32 @@ import { getReports, getForecast, getTaxSummary, getAI, listAdjustments, addAdju
  * - Live mode: use NEXT_PUBLIC_API_BASE_URL if provided.
  */
 export function getApi(): AxiosInstance {
-    const { demoMode } = useAppStore.getState();
-    const baseURL = demoMode ? '' : (process.env.NEXT_PUBLIC_API_BASE_URL || '');
+    const { demoMode, dataSource } = useAppStore.getState();
+    // When using 'sqlite', we hit Next.js API routes under /api/local/*
+    // When using 'demo', we short-circuit in adapter
+    // When using 'frappe', we use NEXT_PUBLIC_API_BASE_URL
+    const baseURL = (dataSource === 'frappe') ? (process.env.NEXT_PUBLIC_API_BASE_URL || '') : '';
     const instance = axios.create({ baseURL, withCredentials: true });
 
     // Basic request interceptor (attach auth token if needed later)
     instance.interceptors.request.use((config) => {
         // Rewrite demo endpoints to live endpoints if not in demo mode
-        if (!demoMode && config.url) {
-            // If callers still send "/api/demo/...", rewrite to "/api/..." for live base
-            if (config.url.startsWith('/api/demo/')) {
-                config.url = config.url.replace('/api/demo/', '/api/');
+        if (config.url) {
+            // Normalize URLs based on data source
+            if (dataSource === 'sqlite') {
+                // Redirect demo endpoints to local sqlite API
+                if (config.url.startsWith('/api/demo/')) {
+                    config.url = config.url.replace('/api/demo/', '/api/local/');
+                }
+            } else if (dataSource === 'frappe') {
+                // For frappe, ensure no /api/demo prefix
+                if (config.url.startsWith('/api/demo/')) {
+                    config.url = config.url.replace('/api/demo/', '/api/');
+                }
+                // Allow callers to use /api/frappe/* shorthand
+                if (config.url.startsWith('/api/frappe/')) {
+                    config.url = config.url.replace('/api/frappe/', '/api/');
+                }
             }
         }
         // Attach common headers
@@ -32,7 +47,7 @@ export function getApi(): AxiosInstance {
         return config;
     });
     // In demo mode, short-circuit selected API calls to local DemoDB (no network)
-    if (demoMode) {
+    if (dataSource === 'demo') {
         const orig: AxiosAdapter | undefined = instance.defaults.adapter as any;
         const demoAdapter: AxiosAdapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
             const url = (config.url || '').toString();

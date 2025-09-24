@@ -204,7 +204,7 @@ function Header({ onClose, mode, setMode }: { onClose: () => void; mode: Mode; s
                             aria-selected={mode === m}
                             className={[
                                 'px-3 py-1 text-xs rounded-full',
-                                mode === m ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/80 hover:bg-medium/40'
+                                mode === m ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/90 hover:bg-medium/40'
                             ].join(' ')}
                             onClick={() => setMode(m)}
                         >

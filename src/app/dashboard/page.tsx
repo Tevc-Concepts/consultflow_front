@@ -71,6 +71,7 @@ export default function DashboardPage() {
             const companyParam = consolidated && selectedCompanyIds.length > 0
                 ? selectedCompanyIds.join(',')
                 : company;
+            // Use demo path; client rewrites to /api/local when dataSource is sqlite
             const res = await api.get<ReportsResponse>('/api/demo/reports', {
                 params: { company: companyParam, range, from: customFrom, to: customTo, currency: reportingCurrency }
             });
@@ -113,7 +114,7 @@ export default function DashboardPage() {
     const fmt = React.useCallback((n: number) => formatCurrency(convertAmount(n, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined), reportingCurrency), [reportingCurrency, fxLast]);
 
     return (
-        <div className="container py-6 space-y-4">
+        <div className="container py-6 space-y-4" data-testid="dashboard-container">
             <div className="flex flex-col md:flex-row md:items-center gap-3">
                 <div className="flex items-center gap-2">
                     <label htmlFor="company" className="text-sm text-deep-navy/80">Company</label>
@@ -131,7 +132,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-sm text-deep-navy/80">Range</span>
+                    <span className="text-sm text-deep-navy/90">Range</span>
                     <div className="inline-flex rounded-full border border-medium/60 p-0.5">
                         {(['30', '90', 'custom'] as Range[]).map(r => (
                             <button
@@ -139,7 +140,7 @@ export default function DashboardPage() {
                                 onClick={() => setRange(r)}
                                 className={[
                                     'px-3 py-1.5 text-sm rounded-full',
-                                    range === r ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/80 hover:bg-medium/40'
+                                    range === r ? 'bg-medium/60 text-deep-navy font-medium' : 'text-deep-navy/90 hover:bg-medium/40'
                                 ].join(' ')}
                                 aria-pressed={range === r}
                             >

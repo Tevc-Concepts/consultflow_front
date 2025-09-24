@@ -8,7 +8,7 @@ export default function DemoSwitch({ className }: { className?: string }) {
     const setDemoMode = useAppStore((s: AppState) => s.setDemoMode);
     return (
         <label className={["inline-flex items-center gap-2 text-xs", className].filter(Boolean).join(' ')} title="Toggle demo data mode">
-            <span className="text-deep-navy/70">Demo data</span>
+            <span className="text-deep-navy/90">Demo data</span>
             <button
                 type="button"
                 role="switch"

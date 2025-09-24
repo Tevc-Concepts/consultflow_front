@@ -113,10 +113,10 @@ export default function PLPreview({ periodLabel, className }: { periodLabel: str
                 <div className="text-sm font-medium">P&L preview</div>
                 <div className="text-xs text-deep-navy/60">{periodLabel}</div>
             </div>
-            {loading && <div className="text-sm text-deep-navy/70">Loading…</div>}
+            {loading && <div className="text-sm text-deep-navy/80">Loading…</div>}
             {!loading && error && <div className="text-sm text-coral">Failed to load: {error}</div>}
             {!loading && !error && !agg && (
-                <div className="text-sm text-deep-navy/70">No data for selected period.</div>
+                <div className="text-sm text-deep-navy/80">No data for selected period.</div>
             )}
             {!loading && !error && agg && (
                 <>

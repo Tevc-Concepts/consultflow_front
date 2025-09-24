@@ -12,7 +12,7 @@ export default function CSVTemplateDownload({ className }: CSVTemplateDownloadPr
     const [kind, setKind] = React.useState<TemplateKind>('transactions');
 
     const onDownload = () => {
-        const url = `/api/demo/upload/template?type=${encodeURIComponent(kind)}`;
+        const url = `/api/local/upload/template?type=${encodeURIComponent(kind)}`;
         // Use a hidden anchor to trigger download
         const a = document.createElement('a');
         a.href = url;
@@ -24,7 +24,7 @@ export default function CSVTemplateDownload({ className }: CSVTemplateDownloadPr
 
     return (
         <div className={["flex items-center gap-2", className].filter(Boolean).join(' ')}>
-            <label htmlFor="tpl-kind" className="text-sm text-deep-navy/80">Template</label>
+            <label htmlFor="tpl-kind" className="text-sm text-deep-navy/90">Template</label>
             <select
                 id="tpl-kind"
                 value={kind}
