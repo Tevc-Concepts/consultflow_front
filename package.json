@@ -2,6 +2,9 @@
     "name": "consultflow-front",
     "version": "0.1.0",
     "private": true,
+    "engines": {
+        "node": "18.x"
+    },
     "scripts": {
         "dev": "next dev",
         "build": "next build",
@@ -12,7 +15,6 @@
     "dependencies": {
         "@ducanh2912/next-pwa": "^10.2.9",
         "axios": "^1.7.7",
-        "better-sqlite3": "^9.6.0",
         "framer-motion": "^11.3.31",
         "html2canvas": "^1.4.1",
         "jspdf": "^3.0.3",
@@ -30,10 +32,14 @@
         "@types/react": "^18.3.5",
         "@types/react-dom": "^18.3.0",
         "autoprefixer": "^10.4.20",
+        "better-sqlite3": "^9.6.0",
         "eslint": "^9.9.0",
         "eslint-config-next": "^15.0.0",
         "postcss": "^8.4.41",
         "tailwindcss": "^3.4.10",
         "typescript": "^5.6.2"
+    },
+    "optionalDependencies": {
+        "better-sqlite3": "^9.6.0"
     }
 }
