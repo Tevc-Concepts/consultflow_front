@@ -1,50 +1,80 @@
 /**
  * Vercel-Compatible Seed API
- * Initializes demo data for serverless deployment
+ * Uses proper ConsultFlow database schema
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { vercelConsultFlowDB } from '@shared/api/vercelConsultFlowDB';
 
 export async function POST(req: NextRequest) {
   try {
-    // Simulate database seeding for Vercel deployment
-    const seedData = {
-      companies: 5,
-      users: 7,
-      financial_records: 120, // 24 months × 5 companies
-      documents: 20,
-      reports: 20,
-      tickets: 15,
-      exchange_rates: 24 // months
-    };
+    const db = vercelConsultFlowDB;
+    const allData = db.getAllData();
     
     // Simulate seeding delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const seedStats = {
+      superAdmins: allData.superAdmins.length,
+      subscriptionPlans: allData.subscriptionPlans.length,
+      consultants: allData.consultants.length,
+      clients: allData.clients.length,
+      companies: allData.companies.length,
+      financialReports: allData.financialReports.length,
+      tickets: allData.tickets.length,
+      documents: allData.documents.length
+    };
     
     return NextResponse.json({
       success: true,
-      message: 'Demo database initialized successfully (in-memory)',
-      data: seedData,
+      message: 'ConsultFlow database initialized successfully (Vercel in-memory)',
+      data: seedStats,
       timestamp: new Date().toISOString(),
-      environment: 'vercel-serverless'
+      environment: 'vercel-serverless',
+      demoCredentials: {
+        superAdmin: { username: 'admin', password: 'super123' },
+        sampleConsultant: { email: 'sarah@consultflow.com', password: 'consultant123' },
+        sampleClient: { email: 'adebayo@techflownigeria.com', password: 'client123' }
+      }
     });
     
-  } catch (error) {
-    console.error('Demo seed API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to initialize demo database' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    console.error('Vercel seed API error:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to initialize database',
+      details: error.message
+    }, { status: 500 });
   }
 }
 
 export async function GET(req: NextRequest) {
-  // Return seed status
-  return NextResponse.json({
-    success: true,
-    status: 'Demo data ready',
-    environment: 'vercel-serverless',
-    message: 'In-memory demo data is always available',
-    timestamp: new Date().toISOString()
-  });
+  try {
+    const db = vercelConsultFlowDB;
+    const allData = db.getAllData();
+    
+    return NextResponse.json({
+      success: true,
+      status: 'ConsultFlow database ready',
+      environment: 'vercel-serverless',
+      message: 'In-memory database with complete entity relationships',
+      timestamp: new Date().toISOString(),
+      statistics: {
+        superAdmins: allData.superAdmins.length,
+        consultants: allData.consultants.length,
+        clients: allData.clients.length,
+        companies: allData.companies.length,
+        reports: allData.financialReports.length,
+        tickets: allData.tickets.length,
+        documents: allData.documents.length,
+        subscriptionPlans: allData.subscriptionPlans.length
+      }
+    });
+  } catch (error: any) {
+    console.error('Vercel seed status error:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to get database status'
+    }, { status: 500 });
+  }
 }
