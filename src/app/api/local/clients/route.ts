@@ -11,20 +11,19 @@ import {
   addTicketComment
 } from '@shared/api/localDb';
 
-// GET /api/local/clients?consultantId=<id>&action=<action>
+// GET /api/local/clients?consultantId=<id>&action=<action> OR companyId=<id>&action=<action>
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const consultantId = searchParams.get('consultantId');
   const action = searchParams.get('action');
   const companyId = searchParams.get('companyId');
   
-  if (!consultantId) {
-    return NextResponse.json({ error: 'Consultant ID required' }, { status: 400 });
-  }
-
   try {
     switch (action) {
       case 'clients':
+        if (!consultantId) {
+          return NextResponse.json({ error: 'Consultant ID required for clients action' }, { status: 400 });
+        }
         const clientRelations = getClientsByConsultant(consultantId);
         return NextResponse.json({ clients: clientRelations });
         
@@ -50,6 +49,9 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ tickets });
         
       default:
+        if (!consultantId) {
+          return NextResponse.json({ error: 'Consultant ID required for default action' }, { status: 400 });
+        }
         // Return all client data for consultant
         const relations = getClientsByConsultant(consultantId);
         return NextResponse.json({ relations });

@@ -1,10 +1,14 @@
 /**
  * Authentication Repository
  * Handles both demo mode (LocalStorage) and live mode (API) authentication
+ * Integrated with ConsultFlow comprehensive database
  */
 
+import { consultFlowDB } from '../../shared/api/consultflowDB';
+import { getDemoCredentials } from '../../shared/hooks/useConsultFlowDB';
+
 export type AuthMode = 'demo' | 'live';
-export type UserRole = 'consultant' | 'client';
+export type UserRole = 'consultant' | 'client' | 'superadmin';
 
 export type User = {
   id: string;
@@ -15,6 +19,9 @@ export type User = {
   role: UserRole;
   company?: string;
   avatar?: string;
+  subscriptionPlan?: string;
+  consultantId?: string;
+  companies?: string[];
 };
 
 export type LoginCredentials = {
@@ -30,58 +37,9 @@ export type AuthSession = {
 };
 
 const STORAGE_KEYS = {
-  DEMO_USERS: 'consultflow:auth:demo-users:v1',
   SESSION: 'consultflow:auth:session:v1',
   MODE: 'consultflow:auth:mode:v1',
 } as const;
-
-// Demo user database
-const DEFAULT_DEMO_USERS: (User & { password: string })[] = [
-  {
-    id: 'consultant1',
-    username: 'consultant1',
-    password: 'demo123',
-    email: 'consultant@consultflow.com',
-    firstName: 'Sarah',
-    lastName: 'Johnson',
-    role: 'consultant',
-    company: 'ConsultFlow Advisory',
-    avatar: '👩‍💼'
-  },
-  {
-    id: 'consultant2',
-    username: 'accountant1',
-    password: 'demo123',
-    email: 'accountant@consultflow.com',
-    firstName: 'Michael',
-    lastName: 'Chen',
-    role: 'consultant',
-    company: 'ConsultFlow Advisory',
-    avatar: '👨‍💻'
-  },
-  {
-    id: 'client1',
-    username: 'client1',
-    password: 'demo123',
-    email: 'client@techstartup.com',
-    firstName: 'Emily',
-    lastName: 'Rodriguez',
-    role: 'client',
-    company: 'TechStartup Inc.',
-    avatar: '👩‍🚀'
-  },
-  {
-    id: 'client2',
-    username: 'ceo1',
-    password: 'demo123',
-    email: 'ceo@retailcorp.com',
-    firstName: 'David',
-    lastName: 'Kim',
-    role: 'client',
-    company: 'RetailCorp Ltd.',
-    avatar: '👨‍💼'
-  }
-];
 
 class AuthRepository {
   private getFromStorage<T>(key: string, defaultValue: T): T {
@@ -112,56 +70,121 @@ class AuthRepository {
     }
   }
 
-  // Initialize demo users database
+  // Initialize demo database
   initDemoUsers(): void {
-    const existingUsers = this.getFromStorage(STORAGE_KEYS.DEMO_USERS, []);
-    if (existingUsers.length === 0) {
-      this.saveToStorage(STORAGE_KEYS.DEMO_USERS, DEFAULT_DEMO_USERS);
+    // Database auto-initializes via consultFlowDB constructor
+    // Just ensure it's ready
+    try {
+      const data = consultFlowDB.getAllData();
+      console.log('✅ ConsultFlow Auth initialized with comprehensive database:', {
+        consultants: data.consultants?.length || 0,
+        clients: data.clients?.length || 0,
+        superadmins: data.superAdmins?.length || 0,
+      });
+    } catch (error) {
+      console.warn('⚠️ Failed to initialize ConsultFlow database:', error);
     }
   }
 
-  // Demo mode authentication
+  // Demo mode authentication using comprehensive database
   async loginDemo(credentials: LoginCredentials): Promise<{ success: boolean; user?: User; error?: string }> {
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    const users = this.getFromStorage(STORAGE_KEYS.DEMO_USERS, DEFAULT_DEMO_USERS);
-    const user = users.find(u => 
-      u.username === credentials.username && 
-      u.password === credentials.password
-    );
+    let authenticatedUser: User | null = null;
 
-    if (!user) {
+    try {
+      // Try SuperAdmin first
+      if (credentials.username === 'admin' || credentials.username.includes('admin')) {
+        const superAdmin = consultFlowDB.authenticateSuperAdmin(credentials.username, credentials.password);
+        if (superAdmin) {
+          authenticatedUser = {
+            id: superAdmin.id,
+            username: superAdmin.username,
+            email: superAdmin.username + '@consultflow.com',
+            firstName: 'Super',
+            lastName: 'Administrator',
+            role: 'superadmin',
+            company: 'ConsultFlow Platform',
+            avatar: '🛡️'
+          };
+        }
+      }
+
+      // Try Consultant authentication
+      if (!authenticatedUser) {
+        const consultant = consultFlowDB.authenticateConsultant(credentials.username, credentials.password);
+        if (consultant) {
+          const subscriptionPlans = consultFlowDB.getSubscriptionPlans();
+          const plan = subscriptionPlans.find(p => p.id === consultant.subscriptionPlanId);
+          
+          authenticatedUser = {
+            id: consultant.id,
+            username: consultant.email,
+            email: consultant.email,
+            firstName: consultant.name.split(' ')[0],
+            lastName: consultant.name.split(' ')[1] || '',
+            role: 'consultant',
+            company: consultant.company || 'ConsultFlow Advisory',
+            avatar: consultant.avatar || '👩‍💼',
+            subscriptionPlan: plan?.name || 'Unknown'
+          };
+        }
+      }
+
+      // Try Client authentication
+      if (!authenticatedUser) {
+        const client = consultFlowDB.authenticateClient(credentials.username, credentials.password);
+        if (client) {
+          // Get client's company names for display
+          const clientCompanies = consultFlowDB.getClientCompanies(client.id);
+          const primaryCompany = clientCompanies[0]?.name || 'Unknown Company';
+          
+          authenticatedUser = {
+            id: client.id,
+            username: client.email,
+            email: client.email,
+            firstName: client.name.split(' ')[0],
+            lastName: client.name.split(' ')[1] || '',
+            role: 'client',
+            company: primaryCompany,
+            avatar: client.avatar || '👨‍💼',
+            consultantId: client.consultantId,
+            companies: client.companies
+          };
+        }
+      }
+
+      if (!authenticatedUser) {
+        return {
+          success: false,
+          error: 'Invalid username or password'
+        };
+      }
+
+      // Create session
+      const session: AuthSession = {
+        user: authenticatedUser,
+        token: `demo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+        mode: 'demo'
+      };
+
+      this.saveToStorage(STORAGE_KEYS.SESSION, session);
+      this.saveToStorage(STORAGE_KEYS.MODE, 'demo');
+
+      return {
+        success: true,
+        user: session.user
+      };
+
+    } catch (error) {
+      console.error('Demo login error:', error);
       return {
         success: false,
-        error: 'Invalid username or password'
+        error: 'Authentication failed'
       };
     }
-
-    // Create session
-    const session: AuthSession = {
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        company: user.company,
-        avatar: user.avatar,
-      },
-      token: `demo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
-      mode: 'demo'
-    };
-
-    this.saveToStorage(STORAGE_KEYS.SESSION, session);
-    this.saveToStorage(STORAGE_KEYS.MODE, 'demo');
-
-    return {
-      success: true,
-      user: session.user
-    };
   }
 
   // Live mode authentication (API integration ready)
@@ -320,16 +343,9 @@ class AuthRepository {
     return false;
   }
 
-  // Add a demo user (for testing)
-  addDemoUser(user: User & { password: string }): void {
-    const users = this.getFromStorage(STORAGE_KEYS.DEMO_USERS, DEFAULT_DEMO_USERS);
-    users.push(user);
-    this.saveToStorage(STORAGE_KEYS.DEMO_USERS, users);
-  }
-
-  // Get all demo users (for admin/testing purposes)
-  getDemoUsers(): (User & { password: string })[] {
-    return this.getFromStorage(STORAGE_KEYS.DEMO_USERS, DEFAULT_DEMO_USERS);
+  // Get demo credentials helper
+  getDemoCredentials() {
+    return getDemoCredentials();
   }
 
   // Clear all auth data (for testing/reset)
@@ -337,6 +353,20 @@ class AuthRepository {
     Object.values(STORAGE_KEYS).forEach(key => {
       this.removeFromStorage(key);
     });
+  }
+
+  // Legacy compatibility methods (now use comprehensive database)
+  addDemoUser(): void {
+    console.warn('addDemoUser is deprecated. Use consultFlowDB directly.');
+  }
+
+  getDemoUsers(): any[] {
+    const credentials = getDemoCredentials();
+    return [
+      ...credentials.consultants.map(c => ({ ...c, role: 'consultant' })),
+      ...credentials.clients.map(c => ({ ...c, role: 'client' })),
+      { ...credentials.superAdmin, role: 'superadmin' }
+    ];
   }
 }
 

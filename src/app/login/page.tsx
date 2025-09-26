@@ -97,11 +97,25 @@ export default function LoginPage() {
 
   const isValid = formData.username.trim() && formData.password.trim();
 
-  // Demo user credentials for easy access
-  const demoUsers = [
-    { username: 'consultant1', password: 'demo123', role: 'Consultant', name: 'Sarah Johnson' },
-    { username: 'client1', password: 'demo123', role: 'Client', name: 'Emily Rodriguez' }
-  ];
+  // Demo user credentials for easy access (now from comprehensive DB)
+  const demoCredentials = React.useMemo(() => {
+    try {
+      const { getDemoCredentials } = require('@shared/hooks/useConsultFlowDB');
+      const creds = getDemoCredentials();
+      return [
+        { username: creds.superAdmin.username, password: creds.superAdmin.password, role: 'SuperAdmin', name: 'Administrator' },
+        ...creds.consultants.map((c: any) => ({ username: c.email, password: c.password, role: 'Consultant', name: c.name })),
+        ...creds.clients.slice(0, 2).map((c: any) => ({ username: c.email, password: c.password, role: 'Client', name: c.name }))
+      ];
+    } catch (error) {
+      console.warn('Failed to load demo credentials:', error);
+      return [
+        { username: 'admin', password: 'super123', role: 'SuperAdmin', name: 'Administrator' },
+        { username: 'sarah@consultflow.com', password: 'consultant123', role: 'Consultant', name: 'Sarah Wilson' },
+        { username: 'adebayo@techflownigeria.com', password: 'client123', role: 'Client', name: 'Adebayo Okonkwo' }
+      ];
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-white via-blue-50/30 to-indigo-50/40 flex items-center justify-center p-4">
@@ -269,7 +283,7 @@ export default function LoginPage() {
                 Demo Credentials
               </h3>
               <div className="space-y-2">
-                {demoUsers.map((user) => (
+                {demoCredentials.map((user) => (
                   <button
                     key={user.username}
                     onClick={() => {

@@ -274,13 +274,22 @@ export function seedIfEmpty() {
 }
 
 export function forceSeed() {
-    // Clear all data first
+    // Clear all data in correct order (reverse foreign key dependencies)
+    run('PRAGMA foreign_keys = OFF'); // Temporarily disable FK constraints
+    
+    run('DELETE FROM support_tickets');
+    run('DELETE FROM reports'); 
+    run('DELETE FROM documents');
+    run('DELETE FROM client_relationships');
     run('DELETE FROM general_ledger');
     run('DELETE FROM adjustments');  
     run('DELETE FROM insights');
     run('DELETE FROM series');
+    run('DELETE FROM users');
     run('DELETE FROM companies');
     run('DELETE FROM exchange_rates');
+    
+    run('PRAGMA foreign_keys = ON'); // Re-enable FK constraints
     
     // Re-seed with fresh data
     seedDatabase();
@@ -372,6 +381,11 @@ function seedDatabase() {
         
         // Generate data for each company with realistic business profiles
         companies.forEach((company, companyIndex) => {
+            // Find the client and consultant for this company
+            const relationship = clientCompanyMap.find(rel => rel.companyId === company.id);
+            const clientId = relationship?.clientId;
+            const consultantId = relationship?.consultantId;
+            
             // Realistic starting values based on company profile and currency
             let cash: number;
             let baseRevenue: number;
@@ -408,9 +422,6 @@ function seedDatabase() {
                     baseRevenue = 1_000_000;
                     profitMargin = 0.15;
             }
-            
-            const clientId = clientCompanyMap.find(rel => rel.companyId === company.id)?.clientId;
-            const consultantId = clientCompanyMap.find(rel => rel.companyId === company.id)?.consultantId;
             
             dates.forEach((date, i) => {
                 const month = new Date(date).getMonth();
