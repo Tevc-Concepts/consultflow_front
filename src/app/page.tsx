@@ -11,7 +11,7 @@ export default function HomePage() {
                     <div className="flex items-center gap-3">
                         <span className="md:hidden inline-flex items-center">
                             <Image
-                                src="/images/consultflow_stacked.jpg"
+                                src="/images/consultflow_primary.png"
                                 alt="Consultflow logo"
                                 width={40}
                                 height={40}
@@ -22,7 +22,7 @@ export default function HomePage() {
                         </span>
                         <span className="hidden md:inline-flex items-center">
                             <Image
-                                src="/images/consultflow_secondary.jpg"
+                                src="/images/consultflow_primary.png"
                                 alt="Consultflow"
                                 width={220}
                                 height={40}

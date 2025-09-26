@@ -47,7 +47,7 @@ export default function LoginForm({ redirectTo = '/dashboard', onSuccess }: Logi
         
         if (!validateForm()) return;
 
-        const success = await login(email, password, rememberMe);
+        const success = await login({ username: email, password });
 
         if (success) {
             notify({

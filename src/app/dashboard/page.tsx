@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import ProtectedRoute from '@features/auth/ProtectedRoute';
 import getApi from '@shared/api/client';
 import { KPI } from '@components/ui/KPI';
 import Card from '@components/ui/Card';
@@ -10,6 +11,7 @@ import AIWidget from '@shared/components/AIWidget';
 import AnalyticsDashboard from '@features/analytics/AnalyticsDashboard';
 import RechartsLineChart from '@shared/components/LineChart';
 import { useAppStore, type AppState, convertAmount, formatCurrency } from '@shared/state/app';
+import { useAuthStore } from '@features/auth/store';
 
 type KPIKey = 'revenue' | 'grossProfit' | 'netIncome' | 'cashBalance' | 'burnRate';
 
@@ -44,6 +46,7 @@ type ReportsResponse = {
 type Range = '30' | '90' | 'custom';
 
 export default function DashboardPage() {
+    const { user } = useAuthStore();
     const reportingCurrency = useAppStore((s: AppState) => s.reportingCurrency);
     const consolidated = useAppStore((s: AppState) => s.consolidated);
     const selectedCompanyIds = useAppStore((s: AppState) => s.selectedCompanyIds);
@@ -125,7 +128,8 @@ export default function DashboardPage() {
     const fmt = React.useCallback((n: number) => formatCurrency(convertAmount(n, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined), reportingCurrency), [reportingCurrency, fxLast]);
 
     return (
-        <div className="container py-6 space-y-4" data-testid="dashboard-container">
+        <ProtectedRoute requiredRole="consultant">
+            <div className="container py-6 space-y-4" data-testid="dashboard-container">
             {/* Navigation Tabs */}
             <div className="flex space-x-1 bg-medium/30 rounded-xl p-1 mb-6">
                 <button
@@ -317,6 +321,7 @@ export default function DashboardPage() {
             {activeTab === 'analytics' && (
                 <AnalyticsDashboard />
             )}
-        </div>
+            </div>
+        </ProtectedRoute>
     );
 }

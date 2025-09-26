@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import '../styles/globals.css';
 import { DeckProvider } from '@shared/state/deck';
+import { ToastProvider } from '@shared/components/Toast';
 import AppShell from '@shared/components/AppShell';
 import ErrorBoundary from '@shared/components/ErrorBoundary';
+import DatabaseSeeder from '@shared/components/DatabaseSeeder';
 
 export const metadata: Metadata = {
     title: {
@@ -36,12 +38,15 @@ export default function RootLayout({
             </head>
             <body className="min-h-screen bg-background text-foreground">
                 <ErrorBoundary>
-                    <DeckProvider>
-                        <a href="#content" className="skip-link">Skip to content</a>
-                        <AppShell>
-                            {children}
-                        </AppShell>
-                    </DeckProvider>
+                    <ToastProvider>
+                        <DeckProvider>
+                            <DatabaseSeeder />
+                            <a href="#content" className="skip-link">Skip to content</a>
+                            <AppShell>
+                                {children}
+                            </AppShell>
+                        </DeckProvider>
+                    </ToastProvider>
                 </ErrorBoundary>
             </body>
         </html>
