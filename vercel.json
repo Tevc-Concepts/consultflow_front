@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "name": "consultflow-frontend",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    }
+  ],
+  "env": {
+    "LOCAL_SQLITE_PATH": "/tmp/consultflow.db"
+  },
+  "functions": {
+    "src/app/api/**/*.ts": {
+      "runtime": "nodejs18.x",
+      "maxDuration": 30
+    }
+  },
+  "regions": ["iad1"]
+}

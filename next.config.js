@@ -44,11 +44,24 @@ const withPWA = require('next-pwa')({
 /** @type {import('next').NextConfig} */
 const config = {
     images: {
-        // Allow localhost images during development
+        // Allow localhost images during development and Vercel domains
         remotePatterns: [
             { protocol: 'http', hostname: 'localhost' },
-            { protocol: 'https', hostname: 'localhost' }
+            { protocol: 'https', hostname: 'localhost' },
+            { protocol: 'https', hostname: '*.vercel.app' }
         ]
+    },
+    // Vercel optimizations
+    experimental: {
+        serverComponentsExternalPackages: ['better-sqlite3'],
+    },
+    // Ensure SQLite works in serverless environment
+    webpack: (config, { isServer }) => {
+        if (isServer) {
+            config.externals = config.externals || [];
+            config.externals.push('better-sqlite3');
+        }
+        return config;
     }
 };
 
