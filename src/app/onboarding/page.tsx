@@ -92,7 +92,13 @@ export default function OnboardingPage() {
         setConsolidated(selectedCompanyIds.length > 1 ? true : consolidated);
         setOnboardingComplete(true);
         notify({ title: 'Welcome to Consultflow', message: `Role: ${role ?? 'Consultant'} • Mode: ${mode}`, kind: 'success' });
-        router.push('/');
+        
+        // Role-based routing
+        if (role === 'Client') {
+            router.push('/client');
+        } else {
+            router.push('/dashboard');
+        }
     }
 
     return (
@@ -115,7 +121,7 @@ export default function OnboardingPage() {
                                     </button>
                                     <button onClick={() => { setRole('Client'); useAppStore.getState().setRole('Client'); }} className={["card p-4 text-left", role === 'Client' ? 'ring-2 ring-cobalt' : ''].join(' ')}>
                                         <div className="font-medium">Client</div>
-                                        <div className="text-sm text-deep-navy/70">Business owner view with KPIs, reports, and financial insights.</div>
+                                        <div className="text-sm text-deep-navy/70">Business owner or finance team member. View your company&apos;s KPIs, reports, and financial insights.</div>
                                     </button>
                                 </div>
                                 <div className="mt-4 flex justify-between">
