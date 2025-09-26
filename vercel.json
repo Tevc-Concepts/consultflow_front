@@ -1,25 +1,18 @@
 {
   "version": 2,
   "name": "consultflow-frontend",
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    }
-  ],
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
   "env": {
-    "LOCAL_SQLITE_PATH": "/tmp/consultflow.db"
+    "NEXT_PUBLIC_DATA_SOURCE": "demo",
+    "NEXT_PUBLIC_DEBUG_API": "false"
   },
   "functions": {
     "src/app/api/**/*.ts": {
       "runtime": "nodejs18.x",
-      "maxDuration": 30
+      "maxDuration": 25
     }
   },
   "regions": ["iad1"]
