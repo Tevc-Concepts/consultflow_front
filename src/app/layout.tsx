@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import '../styles/globals.css';
 import { DeckProvider } from '@shared/state/deck';
 import AppShell from '@shared/components/AppShell';
+import ErrorBoundary from '@shared/components/ErrorBoundary';
 
 export const metadata: Metadata = {
     title: {
@@ -30,13 +31,18 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
     return (
         <html lang="en" suppressHydrationWarning>
+            <head>
+                <script defer src="https://feedback.fish/ff.js?pid=2268faa5f0610b"></script>
+            </head>
             <body className="min-h-screen bg-background text-foreground">
-                <DeckProvider>
-                    <a href="#content" className="skip-link">Skip to content</a>
-                    <AppShell>
-                        {children}
-                    </AppShell>
-                </DeckProvider>
+                <ErrorBoundary>
+                    <DeckProvider>
+                        <a href="#content" className="skip-link">Skip to content</a>
+                        <AppShell>
+                            {children}
+                        </AppShell>
+                    </DeckProvider>
+                </ErrorBoundary>
             </body>
         </html>
     );

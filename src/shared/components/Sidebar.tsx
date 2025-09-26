@@ -14,12 +14,12 @@ type NavItem = {
 
 const items: NavItem[] = [
     {
-        href: '/', label: 'Dashboard', icon: (props) => (
+        href: '/', label: 'Home', icon: (props) => (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" {...props}><path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M3 12h18M3 6h18M3 18h18" /></svg>
         )
     },
     {
-        href: '/dashboard', label: 'Dashboard (alt)', icon: (props) => (
+        href: '/dashboard', label: 'Dashboard', icon: (props) => (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" {...props}><path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M4 4h16v16H4z" /></svg>
         )
     },
@@ -78,7 +78,7 @@ export default function Sidebar({ collapsed = false, onToggle }: { collapsed?: b
                 <Link href="/" className="flex items-center gap-2">
                     {logoOk ? (
                         collapsed ? (
-                            <Image src="/images/consultflow_primary.png" alt="Consultflow" width={24} height={24} className="rounded" priority onError={() => setLogoOk(false)} />
+                            <Image src="/images/consultflow_primary.png" alt="Consultflow" width={24} height={24} className="rounded w-6 h-auto" priority onError={() => setLogoOk(false)} />
                         ) : (
                             <Image src="/images/consultflow_primary.png" alt="Consultflow" width={120} height={28} className="h-7 w-auto" priority onError={() => setLogoOk(false)} />
                         )

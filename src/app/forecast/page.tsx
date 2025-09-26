@@ -2,21 +2,13 @@
 
 import * as React from 'react';
 import getApi from '@shared/api/client';
-import dynamic from 'next/dynamic';
 import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
+import RechartsLineChart from '@shared/components/LineChart';
 
 type Point = { date: string; revenue: number; expenses: number };
 type ScenarioKey = 'baseline' | 'rev_down_20' | 'exp_up_15' | 'fx_vol';
 type ForecastResp = { horizonMonths: number; baseline: Point[]; scenarios: Record<ScenarioKey, Point[]>; ai: { summary: string; insights: string[] } };
-
-const ResponsiveContainer: any = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any), { ssr: false });
-const LineChart: any = dynamic(() => import('recharts').then(m => m.LineChart as any), { ssr: false });
-const Line: any = dynamic(() => import('recharts').then(m => m.Line as any), { ssr: false });
-const XAxis: any = dynamic(() => import('recharts').then(m => m.XAxis as any), { ssr: false });
-const YAxis: any = dynamic(() => import('recharts').then(m => m.YAxis as any), { ssr: false });
-const Tooltip: any = dynamic(() => import('recharts').then(m => m.Tooltip as any), { ssr: false });
-const Legend: any = dynamic(() => import('recharts').then(m => m.Legend as any), { ssr: false });
 
 export default function ForecastPage() {
     const [months, setMonths] = React.useState(12);
@@ -26,7 +18,20 @@ export default function ForecastPage() {
 
     const fetchData = React.useCallback(async () => {
         setLoading(true); setError(null);
-        try { const api = getApi(); const res = await api.get<ForecastResp>('/api/demo/forecast', { params: { months } }); setData(res.data); } catch (e: any) { setError(e?.message ?? 'Failed'); } finally { setLoading(false); }
+        try { 
+            const api = getApi(); 
+            const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
+            const endpoint = dataSource === 'demo' ? '/api/demo/forecast' : 
+                           dataSource === 'localDb' ? '/api/local/forecast' : 
+                           '/api/forecast'; // frappe endpoint
+            const res = await api.get<ForecastResp>(endpoint, { params: { months } }); 
+            setData(res.data); 
+        } catch (e: any) { 
+            console.error('Forecast fetch error:', e);
+            setError(e?.message ?? 'Failed to fetch forecast data'); 
+        } finally { 
+            setLoading(false); 
+        }
     }, [months]);
 
     React.useEffect(() => { fetchData(); }, [fetchData]);
@@ -46,38 +51,32 @@ export default function ForecastPage() {
             <Card>
                 <h2 className="text-lg font-semibold mb-2">Revenue — Baseline vs Scenarios</h2>
                 <div className="h-72">
-                    {loading ? (<div className="text-sm text-deep-navy/70">Loading…</div>) : error ? (<div className="text-sm text-coral">{error}</div>) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={data?.baseline ?? []} margin={{ left: 12, right: 12, top: 8, bottom: 8 }}>
-                                <XAxis dataKey="date" hide />
-                                <YAxis width={50} />
-                                <Tooltip />
-                                <Legend />
-                                <Line type="monotone" dataKey="revenue" name="Baseline" data={data?.baseline} stroke="#2774FF" dot={false} />
-                                <Line type="monotone" dataKey="revenue" name="Rev -20%" data={data?.scenarios.rev_down_20} stroke="#FF6F59" dot={false} />
-                                <Line type="monotone" dataKey="revenue" name="FX Vol" data={data?.scenarios.fx_vol} stroke="#7C3AED" dot={false} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    )}
+                    <RechartsLineChart 
+                        data={[...(data?.baseline ?? []), ...(data?.scenarios.rev_down_20 ?? []), ...(data?.scenarios.fx_vol ?? [])]}
+                        lines={[
+                            { dataKey: 'revenue', stroke: '#2774FF', name: 'Baseline' },
+                            { dataKey: 'revenue', stroke: '#FF6F59', name: 'Rev -20%' },
+                            { dataKey: 'revenue', stroke: '#7C3AED', name: 'FX Vol' }
+                        ]}
+                        height="100%"
+                        loading={loading}
+                    />
                 </div>
             </Card>
 
             <Card>
                 <h2 className="text-lg font-semibold mb-2">Expenses — Baseline vs Scenarios</h2>
                 <div className="h-72">
-                    {loading ? (<div className="text-sm text-deep-navy/70">Loading…</div>) : error ? (<div className="text-sm text-coral">{error}</div>) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={data?.baseline ?? []} margin={{ left: 12, right: 12, top: 8, bottom: 8 }}>
-                                <XAxis dataKey="date" hide />
-                                <YAxis width={50} />
-                                <Tooltip />
-                                <Legend />
-                                <Line type="monotone" dataKey="expenses" name="Baseline" data={data?.baseline} stroke="#2774FF" dot={false} />
-                                <Line type="monotone" dataKey="expenses" name="Exp +15%" data={data?.scenarios.exp_up_15} stroke="#FF6F59" dot={false} />
-                                <Line type="monotone" dataKey="expenses" name="FX Vol" data={data?.scenarios.fx_vol} stroke="#7C3AED" dot={false} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    )}
+                    <RechartsLineChart 
+                        data={[...(data?.baseline ?? []), ...(data?.scenarios.exp_up_15 ?? []), ...(data?.scenarios.fx_vol ?? [])]}
+                        lines={[
+                            { dataKey: 'expenses', stroke: '#2774FF', name: 'Baseline' },
+                            { dataKey: 'expenses', stroke: '#FF6F59', name: 'Exp +15%' },
+                            { dataKey: 'expenses', stroke: '#7C3AED', name: 'FX Vol' }
+                        ]}
+                        height="100%"
+                        loading={loading}
+                    />
                 </div>
             </Card>
 

@@ -2,7 +2,7 @@
 
 import { create, type StateCreator } from 'zustand';
 
-export type Currency = 'NGN' | 'USD' | 'CFA';
+export type Currency = 'NGN' | 'USD' | 'CFA' | 'KES' | 'ZAR' | 'GHS' | 'MAD';
 
 export type FXRate = {
     // stored as base NGN -> quote currency rate, e.g., {USD: 1500} means 1 USD = 1500 NGN

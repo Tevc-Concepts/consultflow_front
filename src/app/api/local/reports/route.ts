@@ -10,15 +10,27 @@ export async function GET(req: NextRequest) {
     const range = searchParams.get('range');
     const from = searchParams.get('from');
     const to = searchParams.get('to');
-    // Aggregate series across companies (sqlite seed currently contains only 'lagos')
+    
+    // Get series data for the selected companies
     const series = companies.flatMap(id => (query('SELECT date, revenue, cogs, expenses, cash FROM series WHERE company_id = ? AND is_active = 1 ORDER BY date ASC', [id]) as any[]).map((r: any) => ({ ...r, company_id: id })));
-    // Merge by date (first-of-month ISO). We will adjust later with manual adjustments.
+    
+    // If only one company is selected, return its data directly (no aggregation)
+    // If multiple companies, aggregate by date
     const map = new Map<string, { date: string; revenue: number; cogs: number; expenses: number; cash: number }>();
     for (const row of series) {
         const k = row.date;
-        const cur = map.get(k) || { date: row.date, revenue: 0, cogs: 0, expenses: 0, cash: 0 };
-        cur.revenue += row.revenue; cur.cogs += row.cogs; cur.expenses += row.expenses; cur.cash += row.cash;
-        map.set(k, cur);
+        if (companies.length === 1) {
+            // Single company: use data as-is
+            map.set(k, { date: row.date, revenue: row.revenue, cogs: row.cogs, expenses: row.expenses, cash: row.cash });
+        } else {
+            // Multiple companies: aggregate
+            const cur = map.get(k) || { date: row.date, revenue: 0, cogs: 0, expenses: 0, cash: 0 };
+            cur.revenue += row.revenue; 
+            cur.cogs += row.cogs; 
+            cur.expenses += row.expenses; 
+            cur.cash += row.cash;
+            map.set(k, cur);
+        }
     }
     // Apply adjustments for the selected companies, grouping by month (YYYY-MM)
     const adjRows = query('SELECT date, companies, field, delta FROM adjustments ORDER BY created_at ASC') as any[];
@@ -87,12 +99,31 @@ export async function GET(req: NextRequest) {
     const debt = Math.round(totalAssets * 0.15);
     const totalLiab = ap + accr + debt;
     const equity = totalAssets - totalLiab;
+    // Get exchange rates for the reporting period
+    const exchangeRateRows = query('SELECT * FROM exchange_rates ORDER BY month DESC') as any[];
+    const exchangeRates = exchangeRateRows.map(row => ({
+        month: row.month,
+        usd: row.ngn_usd || 950, // Default fallback
+        cfa: 655, // XOF to NGN approximate
+        kes: row.kes_usd || 135,
+        zar: row.zar_usd || 18.5,
+        ghs: row.ghs_usd || 15.2,
+        mad: row.mad_usd || 10.1
+    }));
+
     const companyRecords = listCompanies(true).filter(c => companies.includes(c.id));
     const payload = {
-        companies: companyRecords.map(c => ({ id: c.id, name: c.name, currency: c.currency as 'NGN' | 'USD' | 'CFA' })),
+        companies: companyRecords.map(c => ({ 
+            id: c.id, 
+            name: c.name, 
+            currency: c.currency as 'NGN' | 'USD' | 'CFA' | 'KES' | 'ZAR' | 'GHS' | 'MAD',
+            fiscal_year_start: '2024-01-01',
+            fiscal_year_end: '2024-12-31',
+            is_active: true
+        })),
         entities: [],
         currency: 'NGN',
-        exchangeRates: [],
+        exchangeRates,
         kpis,
         series: filtered,
         balanceSheet: {

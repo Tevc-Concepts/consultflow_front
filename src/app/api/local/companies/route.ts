@@ -4,7 +4,18 @@ import { listCompanies, upsertCompany, updateCompany, deactivateCompany, seedIfE
 
 export async function GET() {
     seedIfEmpty();
-    const items = listCompanies(false);
+    const companies = listCompanies(false);
+    
+    // Transform to match the expected format for the frontend
+    const items = companies.map(company => ({
+        id: company.id,
+        name: company.name, 
+        currency: company.currency,
+        fiscal_year_start: '2024-01-01',
+        fiscal_year_end: '2024-12-31',
+        is_active: company.is_active === 1
+    }));
+    
     return Response.json({ items });
 }
 

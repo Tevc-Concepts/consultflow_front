@@ -7,14 +7,15 @@ import { useAppStore, type AppState, type Currency } from '@shared/state/app';
 import { useNotifications } from '@shared/state/notifications';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-
-const demoCompanies = [
-    { id: 'lagos', name: 'Lagos Retail Ltd', currency: 'NGN' },
-    { id: 'accra', name: 'Accra Foods Ltd', currency: 'CFA' },
-    { id: 'abuja', name: 'Abuja Tech Ltd', currency: 'USD' }
-];
+import getApi from '@shared/api/client';
 
 type Step = 1 | 2 | 3 | 4 | 5;
+
+interface CompanyData {
+    id: string;
+    name: string;
+    currency: string;
+}
 
 export default function OnboardingPage() {
     const router = useRouter();
@@ -26,11 +27,49 @@ export default function OnboardingPage() {
     const setReportingCurrency = useAppStore((s: AppState) => s.setReportingCurrency);
     const setDemoMode = useAppStore((s: AppState) => s.setDemoMode);
     const setOnboardingComplete = useAppStore((s: AppState) => s.setOnboardingComplete);
+    const dataSource = useAppStore((s: AppState) => s.dataSource);
+    const demoMode = useAppStore((s: AppState) => s.demoMode);
 
     const [step, setStep] = React.useState<Step>(1);
     const [role, setRole] = React.useState<'Consultant' | 'Client' | null>(null);
     const [mode, setMode] = React.useState<'demo' | 'connect' | null>('demo');
+    const [companies, setCompanies] = React.useState<CompanyData[]>([]);
+    const [loadingCompanies, setLoadingCompanies] = React.useState(false);
+    const [supportedCurrencies, setSupportedCurrencies] = React.useState<string[]>(['NGN', 'USD', 'ZAR']);
     const notify = useNotifications(s => s.add);
+
+    // Load companies when stepping to company selection
+    React.useEffect(() => {
+        if (step === 3 && companies.length === 0) {
+            loadCompanies();
+        }
+    }, [step]);
+
+    const loadCompanies = async () => {
+        setLoadingCompanies(true);
+        try {
+            const api = getApi();
+            const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
+            const endpoint = dataSource === 'demo' ? '/api/demo/companies' : 
+                           dataSource === 'localDb' ? '/api/local/companies' : 
+                           '/api/companies';
+            
+            const response = await api.get(endpoint);
+            const companiesData = response.data.items || response.data || [];
+            setCompanies(companiesData);
+            
+            // Extract unique currencies from companies
+            const uniqueCurrencies = [...new Set(companiesData.map((c: CompanyData) => c.currency))] as Currency[];
+            const allCurrencies = ['NGN', 'USD', ...uniqueCurrencies.filter(c => c !== 'NGN' && c !== 'USD')] as Currency[];
+            setSupportedCurrencies([...new Set(allCurrencies)]);
+            
+        } catch (error) {
+            console.error('Failed to load companies:', error);
+            // Fallback to empty array - user will see loading state
+        } finally {
+            setLoadingCompanies(false);
+        }
+    };
 
     function toggleCompany(id: string) {
         const set = new Set(selectedCompanyIds);
@@ -53,7 +92,7 @@ export default function OnboardingPage() {
         setConsolidated(selectedCompanyIds.length > 1 ? true : consolidated);
         setOnboardingComplete(true);
         notify({ title: 'Welcome to Consultflow', message: `Role: ${role ?? 'Consultant'} • Mode: ${mode}`, kind: 'success' });
-        router.push('/dashboard');
+        router.push('/');
     }
 
     return (
@@ -72,11 +111,11 @@ export default function OnboardingPage() {
                                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <button onClick={() => { setRole('Consultant'); useAppStore.getState().setRole('Consultant'); }} className={["card p-4 text-left", role === 'Consultant' ? 'ring-2 ring-cobalt' : ''].join(' ')}>
                                         <div className="font-medium">Consultant</div>
-                                        <div className="text-sm text-deep-navy/70">Manage multiple clients, consolidate entities.</div>
+                                        <div className="text-sm text-deep-navy/70">Financial advisory, multi-company consolidation, and client management.</div>
                                     </button>
                                     <button onClick={() => { setRole('Client'); useAppStore.getState().setRole('Client'); }} className={["card p-4 text-left", role === 'Client' ? 'ring-2 ring-cobalt' : ''].join(' ')}>
                                         <div className="font-medium">Client</div>
-                                        <div className="text-sm text-deep-navy/70">Single company view, simple KPIs and reporting.</div>
+                                        <div className="text-sm text-deep-navy/70">Business owner view with KPIs, reports, and financial insights.</div>
                                     </button>
                                 </div>
                                 <div className="mt-4 flex justify-between">
@@ -110,20 +149,33 @@ export default function OnboardingPage() {
                         {step === 3 && (
                             <section>
                                 <h2 className="text-xl font-semibold">Choose companies</h2>
-                                <p className="text-deep-navy/70 mt-1">Select one or more demo companies. Consolidation toggles automatically.</p>
-                                <ul className="mt-3 divide-y divide-medium/60">
-                                    {demoCompanies.map((c) => (
-                                        <li key={c.id} className="flex items-center justify-between py-2">
-                                            <div>
-                                                <div className="font-medium">{c.name}</div>
-                                                <div className="text-xs text-deep-navy/70">Currency: {c.currency}</div>
-                                            </div>
-                                            <label className="inline-flex items-center gap-2 text-sm">
-                                                <input aria-label={`Include ${c.name}`} type="checkbox" checked={selectedCompanyIds.includes(c.id)} onChange={() => toggleCompany(c.id)} /> Include
-                                            </label>
-                                        </li>
-                                    ))}
-                                </ul>
+                                <p className="text-deep-navy/70 mt-1">Select one or more African companies from our portfolio. Consolidation enables multi-entity reporting.</p>
+                                {loadingCompanies ? (
+                                    <div className="mt-3 py-8 text-center">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cobalt mx-auto mb-2"></div>
+                                        <div className="text-sm text-deep-navy/70">Loading companies...</div>
+                                    </div>
+                                ) : companies.length === 0 ? (
+                                    <div className="mt-3 py-8 text-center">
+                                        <div className="text-4xl mb-2">⚠️</div>
+                                        <div className="text-sm text-deep-navy/70">No companies available. Please try again.</div>
+                                        <Button variant="ghost" size="sm" onClick={loadCompanies} className="mt-2">Retry</Button>
+                                    </div>
+                                ) : (
+                                    <ul className="mt-3 divide-y divide-medium/60">
+                                        {companies.map((c) => (
+                                            <li key={c.id} className="flex items-center justify-between py-2">
+                                                <div>
+                                                    <div className="font-medium">{c.name}</div>
+                                                    <div className="text-xs text-deep-navy/70">Currency: {c.currency}</div>
+                                                </div>
+                                                <label className="inline-flex items-center gap-2 text-sm">
+                                                    <input aria-label={`Include ${c.name}`} type="checkbox" checked={selectedCompanyIds.includes(c.id)} onChange={() => toggleCompany(c.id)} /> Include
+                                                </label>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                                 <div className="mt-4 flex justify-between">
                                     <Button variant="ghost" onClick={back}>Back</Button>
                                     <Button onClick={() => { setConsolidated(selectedCompanyIds.length > 1); next(); }} disabled={selectedCompanyIds.length === 0}>Continue</Button>
@@ -136,8 +188,8 @@ export default function OnboardingPage() {
                                 <h2 className="text-xl font-semibold">Reporting currency</h2>
                                 <p className="text-deep-navy/70 mt-1">Choose how amounts are displayed across the app.</p>
                                 <div className="mt-4 grid grid-cols-3 gap-3">
-                                    {(['NGN', 'USD', 'CFA'] as Currency[]).map((c) => (
-                                        <button key={c} onClick={() => setReportingCurrency(c)} className={["card p-4 text-center", reportingCurrency === c ? 'ring-2 ring-cobalt' : ''].join(' ')}>
+                                    {supportedCurrencies.map((c) => (
+                                        <button key={c} onClick={() => setReportingCurrency(c as Currency)} className={["card p-4 text-center", reportingCurrency === c ? 'ring-2 ring-cobalt' : ''].join(' ')}>
                                             <div className="font-medium">{c}</div>
                                         </button>
                                     ))}
@@ -152,16 +204,16 @@ export default function OnboardingPage() {
                         {step === 5 && (
                             <section>
                                 <h2 className="text-xl font-semibold">All set</h2>
-                                <p className="text-deep-navy/70 mt-1">We’ll load your dashboard with your demo configuration.</p>
+                                <p className="text-deep-navy/70 mt-1">We&rsquo;ll load your home page with your personalized configuration.</p>
                                 <ul className="mt-3 text-sm text-deep-navy/80 list-disc pl-5">
                                     <li>Role: <span className="font-medium">{role}</span></li>
                                     <li>Mode: <span className="font-medium">{mode}</span></li>
-                                    <li>Companies: <span className="font-medium">{selectedCompanyIds.length}</span> selected {selectedCompanyIds.length > 1 ? '(Consolidated)' : ''}</li>
+                                    <li>Companies: <span className="font-medium">{selectedCompanyIds.length}</span> selected {selectedCompanyIds.length > 1 ? "(Consolidated)" : ""}</li>
                                     <li>Reporting currency: <span className="font-medium">{reportingCurrency}</span></li>
                                 </ul>
                                 <div className="mt-4 flex justify-between">
                                     <Button variant="ghost" onClick={back}>Back</Button>
-                                    <Button onClick={finish}>Go to dashboard</Button>
+                                    <Button onClick={finish}>Go to Home</Button>
                                 </div>
                             </section>
                         )}

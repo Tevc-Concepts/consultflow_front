@@ -5,7 +5,7 @@ export async function GET(req: NextRequest) {
     seedIfEmpty();
     const { searchParams } = new URL(req.url);
     const months = Number(searchParams.get('months') || 12);
-    const rows = query('SELECT date, revenue, expenses FROM series WHERE company_id = ? ORDER BY date DESC LIMIT 1', ['lagos']) as any[];
+    const rows = query('SELECT date, revenue, expenses FROM series WHERE company_id = ? ORDER BY date DESC LIMIT 1', ['lagos-ng']) as any[];
     const last = rows[0] || { date: new Date().toISOString().slice(0, 10), revenue: 5000000, expenses: 2000000 };
     const mk = (idx: number) => {
         const d = new Date(last.date); d.setMonth(d.getMonth() + idx + 1);
@@ -18,6 +18,11 @@ export async function GET(req: NextRequest) {
     const scenarios = {
         rev_down_20: baseline.map(p => ({ ...p, revenue: Math.round(p.revenue * 0.8) })),
         exp_up_15: baseline.map(p => ({ ...p, expenses: Math.round(p.expenses * 1.15) })),
+        fx_vol: baseline.map((p, idx) => ({ 
+            ...p, 
+            revenue: Math.round(p.revenue * (1 + Math.sin(idx * 0.5) * 0.1)),
+            expenses: Math.round(p.expenses * (1 + Math.cos(idx * 0.3) * 0.08))
+        })),
     };
     const ai = { summary: 'Forecast indicates steady growth with manageable expense trends.', insights: ['Monitor expense growth', 'Consider price optimization'] };
     return new Response(JSON.stringify({ horizonMonths: months, baseline, scenarios, ai }), { status: 200, headers: { 'Content-Type': 'application/json' } });

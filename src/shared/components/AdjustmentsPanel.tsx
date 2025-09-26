@@ -31,7 +31,11 @@ export default function AdjustmentsPanel() {
 
     const loadCompanies = React.useCallback(async () => {
         try {
-            const res = await api.get<any>('/api/demo/reports', { params: { range: '30' } });
+            const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
+            const reportsEndpoint = dataSource === 'demo' ? '/api/demo/reports' : 
+                                  dataSource === 'localDb' ? '/api/local/reports' : 
+                                  '/api/reports';
+            const res = await api.get<any>(reportsEndpoint, { params: { range: '30' } });
             setCompanies((res.data?.companies ?? []).map((c: any) => ({ id: c.id, name: c.name })));
             // default selected companies from store
             if (consolidated && selectedCompanyIds.length > 0) {
@@ -48,7 +52,11 @@ export default function AdjustmentsPanel() {
         try {
             const comp = (companyList ?? selCompanies);
             const params = comp.length ? { companies: comp.join(',') } : {};
-            const res = await api.get<{ items: Adjustment[] }>('/api/demo/reports/adjustments', { params });
+            const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
+            const adjustmentsEndpoint = dataSource === 'demo' ? '/api/demo/reports/adjustments' : 
+                                       dataSource === 'localDb' ? '/api/local/reports/adjustments' : 
+                                       '/api/reports/adjustments';
+            const res = await api.get<{ items: Adjustment[] }>(adjustmentsEndpoint, { params });
             setItems(prev => {
                 const next = res.data?.items ?? [];
                 if (prev.length === next.length && prev.every((p, i) => p.id === next[i]?.id)) return prev;
@@ -67,7 +75,11 @@ export default function AdjustmentsPanel() {
         const payload = { companies: selCompanies, date, field, delta: Number(delta), note };
         try {
             setLoading(true);
-            await api.post('/api/demo/reports/adjustments', payload);
+            const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
+            const adjustmentsEndpoint = dataSource === 'demo' ? '/api/demo/reports/adjustments' : 
+                                       dataSource === 'localDb' ? '/api/local/reports/adjustments' : 
+                                       '/api/reports/adjustments';
+            await api.post(adjustmentsEndpoint, payload);
             setDate(''); setDelta(''); setNote('');
             await loadItems();
         } catch (e: any) { setError(e?.message ?? 'Failed to add'); }
@@ -75,7 +87,15 @@ export default function AdjustmentsPanel() {
     }
 
     async function onDelete(id: string) {
-        try { setLoading(true); await api.delete('/api/demo/reports/adjustments', { params: { id } }); await loadItems(); }
+        try { 
+            setLoading(true); 
+            const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
+            const adjustmentsEndpoint = dataSource === 'demo' ? '/api/demo/reports/adjustments' : 
+                                       dataSource === 'localDb' ? '/api/local/reports/adjustments' : 
+                                       '/api/reports/adjustments';
+            await api.delete(adjustmentsEndpoint, { params: { id } }); 
+            await loadItems(); 
+        }
         catch (e: any) { setError(e?.message ?? 'Failed to delete'); }
         finally { setLoading(false); }
     }
