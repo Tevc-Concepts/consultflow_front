@@ -21,11 +21,14 @@ export interface NavbarProps {
 const getNavigationItems = (role: 'consultant' | 'client' | 'superadmin') => {
   if (role === 'superadmin') {
     return [
-      { href: '/dashboard', label: 'Admin Dashboard', icon: '🛡️' },
-      { href: '/admin/consultants', label: 'Consultants', icon: '👩‍💼' },
-      { href: '/admin/clients', label: 'Clients', icon: '👥' },
-      { href: '/admin/subscriptions', label: 'Subscriptions', icon: '💰' },
-      { href: '/admin/system', label: 'System', icon: '⚙️' },
+      { href: '/superadmin/dashboard', label: 'Dashboard', icon: '�' },
+      { href: '/superadmin/consultants', label: 'Consultants', icon: '👩‍💼' },
+      { href: '/superadmin/subscriptions', label: 'Subscriptions', icon: '💰' },
+      { href: '/superadmin/clients', label: 'Clients', icon: '👥' },
+      { href: '/superadmin/reports', label: 'Reports', icon: '📈' },
+      { href: '/superadmin/features', label: 'Features', icon: '⚙️' },
+      { href: '/superadmin/tickets', label: 'Support', icon: '🎫' },
+      { href: '/superadmin/system', label: 'System', icon: '🖥️' },
     ];
   } else if (role === 'consultant') {
     return [
@@ -311,7 +314,7 @@ export default function Navbar({ className = '' }: NavbarProps) {
 
               {/* Logo */}
               <Link 
-                href={user.role === 'superadmin' ? '/dashboard' : user.role === 'consultant' ? '/dashboard' : '/client'}
+                href={user.role === 'superadmin' ? '/superadmin/dashboard' : user.role === 'consultant' ? '/dashboard' : '/client'}
                 className="flex items-center gap-2"
               >
                 <h1 className="text-xl font-bold bg-gradient-to-r from-deep-navy to-cobalt bg-clip-text text-transparent">

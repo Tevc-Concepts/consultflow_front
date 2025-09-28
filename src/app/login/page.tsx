@@ -40,6 +40,8 @@ export default function LoginPage() {
         router.push('/dashboard');
       } else if (user?.role === 'client') {
         router.push('/client');
+      } else if (user?.role === 'superadmin') {
+        router.push('/superadmin/dashboard');
       }
     }
   }, [isAuthenticated, router]);
@@ -86,6 +88,8 @@ export default function LoginPage() {
         router.push('/dashboard');
       } else if (user?.role === 'client') {
         router.push('/client');
+      } else if (user?.role === 'superadmin') {
+        router.push('/superadmin/dashboard');
       }
     }
   };
