@@ -5,19 +5,11 @@ import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import { analyticsService, FinancialMetrics, Insight, Forecast } from '@features/analytics/service';
 import { useAppStore } from '@shared/state/app';
-import dynamic from 'next/dynamic';
-
-const ResponsiveContainer: any = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any), { ssr: false });
-const LineChart: any = dynamic(() => import('recharts').then(m => m.LineChart as any), { ssr: false });
-const Line: any = dynamic(() => import('recharts').then(m => m.Line as any), { ssr: false });
-const XAxis: any = dynamic(() => import('recharts').then(m => m.XAxis as any), { ssr: false });
-const YAxis: any = dynamic(() => import('recharts').then(m => m.YAxis as any), { ssr: false });
-const Tooltip: any = dynamic(() => import('recharts').then(m => m.Tooltip as any), { ssr: false });
-const BarChart: any = dynamic(() => import('recharts').then(m => m.BarChart as any), { ssr: false });
-const Bar: any = dynamic(() => import('recharts').then(m => m.Bar as any), { ssr: false });
+import RechartsLineChart from '@shared/components/LineChart';
+import RechartsBarChart from '@shared/components/BarChart';
 
 export default function AnalyticsDashboard() {
-    const { selectedCompanyIds, consolidated, reportingCurrency } = useAppStore();
+    const { selectedCompanyIds, consolidated, reportingCurrency, dataSource } = useAppStore();
     const [loading, setLoading] = useState(true);
     const [metrics, setMetrics] = useState<FinancialMetrics | null>(null);
     const [insights, setInsights] = useState<Insight[]>([]);
@@ -25,6 +17,7 @@ export default function AnalyticsDashboard() {
     const [benchmarks, setBenchmarks] = useState<FinancialMetrics | null>(null);
     const [anomalies, setAnomalies] = useState<Insight[]>([]);
     const [activeTab, setActiveTab] = useState<'overview' | 'forecasts' | 'insights' | 'benchmarks'>('overview');
+    const [lastRefreshedAt, setLastRefreshedAt] = useState<string>('');
 
     const loadAnalytics = useCallback(async () => {
         setLoading(true);
@@ -57,6 +50,7 @@ export default function AnalyticsDashboard() {
             setForecast(forecastData);
             setBenchmarks(benchmarkData);
             setAnomalies(anomaliesData);
+            setLastRefreshedAt(new Date().toISOString());
         } catch (error) {
             console.error('Failed to load analytics:', error);
         } finally {
@@ -110,7 +104,14 @@ export default function AnalyticsDashboard() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-semibold text-deep-navy">Analytics Dashboard</h1>
-                    <p className="text-deep-navy/70">Advanced insights and forecasting</p>
+                    <div className="flex items-center gap-3 text-sm text-deep-navy/70">
+                        {(((process.env.NEXT_PUBLIC_DATA_SOURCE || '').toLowerCase() !== 'frappe') && ((dataSource || '') !== 'frappe')) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-cobalt/30 text-cobalt bg-cobalt/10">Demo Data</span>
+                        )}
+                        {lastRefreshedAt && (
+                            <span>Last refreshed: {new Date(lastRefreshedAt).toLocaleString()}</span>
+                        )}
+                    </div>
                 </div>
                 <Button onClick={loadAnalytics} variant="ghost" size="sm">
                     🔄 Refresh Data
@@ -245,28 +246,20 @@ export default function AnalyticsDashboard() {
                     <Card>
                         <h3 className="text-lg font-semibold mb-4">12-Month Revenue Forecast</h3>
                         <div className="h-80">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={forecasts.map((f, i) => ({
-                                    period: f.period,
-                                    predicted: f.revenue.predicted / 1000,
-                                    lower: f.revenue.lower_bound / 1000,
-                                    upper: f.revenue.upper_bound / 1000,
-                                    confidence: f.revenue.confidence * 100
-                                }))}>
-                                    <XAxis dataKey="period" />
-                                    <YAxis />
-                                    <Tooltip 
-                                        labelFormatter={(label: any) => `Period: ${label}`}
-                                        formatter={(value: any, name: any) => [
-                                            `${reportingCurrency} ${Number(value).toLocaleString()}K`,
-                                            name === 'predicted' ? 'Forecast' : name === 'confidence' ? 'Confidence %' : name
-                                        ]}
-                                    />
-                                    <Line type="monotone" dataKey="predicted" stroke="#2774FF" strokeWidth={3} />
-                                    <Line type="monotone" dataKey="lower" stroke="#FF6F59" strokeDasharray="5 5" />
-                                    <Line type="monotone" dataKey="upper" stroke="#3AD29F" strokeDasharray="5 5" />
-                                </LineChart>
-                            </ResponsiveContainer>
+                            <RechartsLineChart
+                                data={forecasts.map(f => ({
+                                    date: f.period,
+                                    predicted: Math.round(f.revenue.predicted),
+                                    lower: Math.round(f.revenue.lower_bound),
+                                    upper: Math.round(f.revenue.upper_bound)
+                                }))}
+                                lines={[
+                                    { dataKey: 'predicted', stroke: '#2774FF', name: 'Forecast' },
+                                    { dataKey: 'lower', stroke: '#FF6F59', name: 'Lower Bound' },
+                                    { dataKey: 'upper', stroke: '#3AD29F', name: 'Upper Bound' }
+                                ]}
+                                height="100%"
+                            />
                         </div>
                     </Card>
 
@@ -274,17 +267,11 @@ export default function AnalyticsDashboard() {
                         <Card>
                             <h3 className="text-lg font-semibold mb-4">Cash Flow Forecast</h3>
                             <div className="h-64">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={forecasts.slice(0, 6).map(f => ({
-                                        period: f.period,
-                                        cashFlow: f.cash_flow.predicted / 1000
-                                    }))}>
-                                        <XAxis dataKey="period" />
-                                        <YAxis />
-                                        <Tooltip formatter={(value: any) => [`${reportingCurrency} ${Number(value).toLocaleString()}K`, 'Cash Flow']} />
-                                        <Bar dataKey="cashFlow" fill="#12B5B1" />
-                                    </BarChart>
-                                </ResponsiveContainer>
+                                <RechartsBarChart
+                                    data={forecasts.slice(0,6).map(f => ({ name: f.period, cashFlow: Math.round(f.cash_flow.predicted) }))}
+                                    bars={[{ dataKey: 'cashFlow', fill: '#12B5B1', name: 'Cash Flow' }]}
+                                    height="100%"
+                                />
                             </div>
                         </Card>
 
@@ -312,7 +299,11 @@ export default function AnalyticsDashboard() {
             {/* Insights Tab */}
             {activeTab === 'insights' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {insights.map((insight) => (
+                    {insights.length === 0 ? (
+                        <Card>
+                            <div className="text-deep-navy/70">No insights available for the current period and metrics.</div>
+                        </Card>
+                    ) : insights.map((insight) => (
                         <Card key={insight.id}>
                             <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-2">
