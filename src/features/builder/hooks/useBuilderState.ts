@@ -146,7 +146,6 @@ export function useBuilderState() {
 
     const getSelectedBlock = useCallback((): Block | null => {
         if (!state.selectedBlock) return null;
-        
         for (const slide of state.slides) {
             const block = slide.blocks.find(b => b.id === state.selectedBlock);
             if (block) return block;

@@ -43,7 +43,7 @@ export default function OnboardingPage() {
         if (step === 3 && companies.length === 0) {
             loadCompanies();
         }
-    }, [step]);
+    }, [step, companies.length]);
 
     const loadCompanies = async () => {
         setLoadingCompanies(true);

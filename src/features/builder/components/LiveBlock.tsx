@@ -16,15 +16,7 @@ export default function LiveBlock({ block, isSelected = false, onClick, onRemove
   const [data, setData] = React.useState<any>(block.data);
   const [isLoading, setIsLoading] = React.useState(false);
 
-  React.useEffect(() => {
-    if (block.binding && block.binding !== 'none') {
-      loadLiveData();
-    } else {
-      setData(block.data);
-    }
-  }, [block.binding, block.data]);
-
-  const loadLiveData = async () => {
+  const loadLiveData = React.useCallback(async () => {
     if (!block.binding || block.binding === 'none') return;
     
     setIsLoading(true);
@@ -39,7 +31,15 @@ export default function LiveBlock({ block, isSelected = false, onClick, onRemove
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [block.binding, block.data]);
+
+  React.useEffect(() => {
+    if (block.binding && block.binding !== 'none') {
+      loadLiveData();
+    } else {
+      setData(block.data);
+    }
+  }, [block.binding, block.data, loadLiveData]);
 
   const renderContent = () => {
     if (isLoading) {

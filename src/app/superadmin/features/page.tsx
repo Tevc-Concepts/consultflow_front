@@ -1,28 +1,52 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSuperAdminStore } from '../../../features/superadmin/store';
 import { Consultant } from '../../../features/superadmin/store';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
+import { showToast } from '../../../shared/components/Toast';
+import Spinner from '../../../shared/components/Spinner';
 
 export default function SuperAdminFeaturesPage() {
   const featureFlags = useSuperAdminStore((state) => state.featureFlags);
   const consultants = useSuperAdminStore((state) => state.consultants);
   const updateFeatureFlag = useSuperAdminStore((state) => state.updateFeatureFlag);
+  const fetchFeatureFlags = useSuperAdminStore((state) => state.fetchFeatureFlags);
   const [selectedConsultant, setSelectedConsultant] = useState<string>('all');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
 
-  const handleToggleFeature = (featureId: string, enabled: boolean) => {
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!fetchFeatureFlags) return;
+      setLoading(true);
+      try {
+        await fetchFeatureFlags();
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [fetchFeatureFlags]);
+
+  const handleToggleFeature = async (featureId: string, enabled: boolean) => {
+    if (busy[featureId]) return;
+    setBusy((s) => ({ ...s, [featureId]: true }));
     if (selectedConsultant === 'all') {
-      updateFeatureFlag(featureId, enabled, []);
+      const ok = await updateFeatureFlag(featureId, enabled, []);
+      showToast({ title: ok ? 'Feature Updated' : 'Update Failed', message: ok ? 'Flag updated successfully.' : 'Could not update feature flag.', type: ok ? 'success' : 'error' });
     } else {
       const feature = featureFlags.find(f => f.id === featureId);
       const currentIds = feature?.consultantIds || [];
       const newIds = enabled
         ? [...currentIds, selectedConsultant]
         : currentIds.filter(id => id !== selectedConsultant);
-      updateFeatureFlag(featureId, feature?.enabled || false, newIds);
+      const ok = await updateFeatureFlag(featureId, feature?.enabled || false, newIds);
+      showToast({ title: ok ? 'Feature Updated' : 'Update Failed', message: ok ? 'Consultant assignment updated.' : 'Could not update feature assignment.', type: ok ? 'success' : 'error' });
     }
+    setBusy((s) => ({ ...s, [featureId]: false }));
   };
 
   const isFeatureEnabledForConsultant = (featureId: string, consultantId: string) => {
@@ -67,7 +91,15 @@ export default function SuperAdminFeaturesPage() {
 
       {/* Feature Flags */}
       <div className="space-y-4">
-        {featureFlags.map((feature) => (
+        {loading && (
+          <Card>
+            <div className="py-8 text-center text-sm text-gray-600">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent mr-2" />
+              Loading feature flags…
+            </div>
+          </Card>
+        )}
+        {!loading && featureFlags.map((feature) => (
           <Card key={feature.id}>
             <div className="flex items-center justify-between">
               <div className="flex-1">
@@ -91,9 +123,11 @@ export default function SuperAdminFeaturesPage() {
                       : isFeatureEnabledForConsultant(feature.id, selectedConsultant)
                     }
                     onChange={(e) => handleToggleFeature(feature.id, e.target.checked)}
+                    disabled={!!busy[feature.id] || loading}
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  <div className={`w-11 h-6 ${busy[feature.id] ? 'opacity-60' : ''} bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600`}></div>
                 </label>
+                {busy[feature.id] && <span className="ml-2 text-xs text-gray-500"><Spinner size="xs" /></span>}
               </div>
             </div>
           </Card>

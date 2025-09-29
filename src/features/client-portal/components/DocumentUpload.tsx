@@ -32,23 +32,6 @@ export default function DocumentUpload({ companyId, onUploadComplete }: Document
     }
   }, []);
 
-  const handleDrop = React.useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFiles([...Array.from(e.dataTransfer.files)]);
-    }
-  }, []);
-
-  const handleChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      handleFiles([...Array.from(e.target.files)]);
-    }
-  }, []);
-
   const handleFiles = React.useCallback(async (files: File[]) => {
     if (files.length === 0 || isUploading) return;
 
@@ -105,6 +88,23 @@ export default function DocumentUpload({ companyId, onUploadComplete }: Document
       window.dispatchEvent(event);
     }
   }, [uploadDocument, companyId, description, isUploading, onUploadComplete]);
+
+  const handleDrop = React.useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFiles([...Array.from(e.dataTransfer.files)]);
+    }
+  }, [handleFiles]);
+
+  const handleChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      handleFiles([...Array.from(e.target.files)]);
+    }
+  }, [handleFiles]);
 
   const openFileDialog = () => {
     fileInputRef.current?.click();

@@ -27,7 +27,7 @@ export function SuperAdminSidebar() {
   const sidebarContent = (
     <div className="flex h-full w-64 flex-col bg-white shadow-lg">
       <div className="flex h-16 items-center justify-center border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">SuperAdmin</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Admin</h2>
       </div>
       <nav className="flex-1 space-y-1 px-2 py-4">
         {navigation.map((item) => {

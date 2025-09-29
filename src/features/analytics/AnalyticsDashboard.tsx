@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import { analyticsService, FinancialMetrics, Insight, Forecast } from '@features/analytics/service';
-import { liveDataService } from '@features/reports/services/liveDataService';
 import { useAppStore } from '@shared/state/app';
 import dynamic from 'next/dynamic';
 
@@ -27,27 +26,22 @@ export default function AnalyticsDashboard() {
     const [anomalies, setAnomalies] = useState<Insight[]>([]);
     const [activeTab, setActiveTab] = useState<'overview' | 'forecasts' | 'insights' | 'benchmarks'>('overview');
 
-    useEffect(() => {
-        loadAnalytics();
-    }, [selectedCompanyIds, consolidated]);
-
-    const loadAnalytics = async () => {
+    const loadAnalytics = useCallback(async () => {
         setLoading(true);
         try {
             const currentCompanyId = consolidated && selectedCompanyIds.length > 0
                 ? selectedCompanyIds[0]
-                : 'lagos-ng'; // Default company
+                : 'lagos'; // Default demo company id
 
             const endDate = new Date().toISOString().split('T')[0];
             const startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
             // Load all analytics data
-            const [metricsData, insightsData, forecastData, benchmarkData, anomaliesData] = await Promise.all([
+            const [metricsData, forecastData, benchmarkData, anomaliesData] = await Promise.all([
                 analyticsService.calculateFinancialMetrics(currentCompanyId, {
                     start_date: startDate,
                     end_date: endDate
                 }),
-                analyticsService.generateInsights(currentCompanyId, {} as FinancialMetrics), // Will be updated with real metrics
                 analyticsService.generateForecast(currentCompanyId, {
                     forecast_periods: 12,
                     method: 'linear',
@@ -58,6 +52,7 @@ export default function AnalyticsDashboard() {
             ]);
 
             setMetrics(metricsData);
+            // Generate insights based on the actual computed metrics
             setInsights(await analyticsService.generateInsights(currentCompanyId, metricsData));
             setForecast(forecastData);
             setBenchmarks(benchmarkData);
@@ -67,7 +62,11 @@ export default function AnalyticsDashboard() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [consolidated, selectedCompanyIds]);
+
+    useEffect(() => {
+        loadAnalytics();
+    }, [loadAnalytics]);
 
     const formatPercentage = (value: number) => `${(value * 100).toFixed(1)}%`;
     const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', {

@@ -68,7 +68,7 @@ export default function BlockPropertiesPanel({ block, onUpdateBlock }: BlockProp
           return true;
       }
     });
-  }, [block?.kind]);
+  }, [block]);
 
   const handleBindingChange = async (updates: Partial<DataBinding>) => {
     if (!block || !binding) return;

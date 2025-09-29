@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import { useAppStore } from '@shared/state/app';
@@ -70,13 +70,33 @@ export default function ConsolidatedReportsView() {
         setMounted(true);
     }, []);
 
-    useEffect(() => {
-        if (mounted && consolidated) {
-            loadConsolidatedData();
+    const loadCompanyBreakdowns = useCallback(async (companies: CompanyData[]) => {
+        try {
+            const api = getApi();
+            const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
+            const endpoint = dataSource === 'demo' ? '/api/demo/reports' : 
+                           dataSource === 'localDb' ? '/api/local/reports' : 
+                           '/api/reports';
+            
+            const breakdowns: {[key: string]: any} = {};
+            
+            for (const company of companies) {
+                const response = await api.get(endpoint, {
+                    params: { 
+                        company: company.id,
+                        currency: reportingCurrency
+                    }
+                });
+                breakdowns[company.id] = response.data;
+            }
+            
+            setCompanyBreakdowns(breakdowns);
+        } catch (error) {
+            console.error('Failed to load company breakdowns:', error);
         }
-    }, [selectedCompanyIds, consolidated, mounted]);
+    }, [reportingCurrency]);
 
-    const loadConsolidatedData = async () => {
+    const loadConsolidatedData = useCallback(async () => {
         setLoading(true);
         try {
             const api = getApi();
@@ -146,33 +166,13 @@ export default function ConsolidatedReportsView() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [loadCompanyBreakdowns, reportingCurrency]);
 
-    const loadCompanyBreakdowns = async (companies: CompanyData[]) => {
-        try {
-            const api = getApi();
-            const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
-            const endpoint = dataSource === 'demo' ? '/api/demo/reports' : 
-                           dataSource === 'localDb' ? '/api/local/reports' : 
-                           '/api/reports';
-            
-            const breakdowns: {[key: string]: any} = {};
-            
-            for (const company of companies) {
-                const response = await api.get(endpoint, {
-                    params: { 
-                        company: company.id,
-                        currency: reportingCurrency
-                    }
-                });
-                breakdowns[company.id] = response.data;
-            }
-            
-            setCompanyBreakdowns(breakdowns);
-        } catch (error) {
-            console.error('Failed to load company breakdowns:', error);
+    useEffect(() => {
+        if (mounted && consolidated) {
+            loadConsolidatedData();
         }
-    };
+    }, [mounted, consolidated, loadConsolidatedData]);
 
     const handleKPIDrillDown = (kpiKey: string) => {
         setDrillDownKPI(drillDownKPI === kpiKey ? null : kpiKey);

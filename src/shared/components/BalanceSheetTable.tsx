@@ -20,7 +20,7 @@ export default function BalanceSheetTable() {
     const selectedCompanyIds = useAppStore((s: AppState) => s.selectedCompanyIds);
     const dataSource = useAppStore((s: AppState) => s.dataSource);
     const demoMode = useAppStore((s: AppState) => s.demoMode);
-    const api = React.useMemo(() => getApi(), [dataSource, demoMode]);
+    const api = React.useMemo(() => getApi(), []);
     const [company, setCompany] = React.useState<string>('');
     const [range, setRange] = React.useState<'30' | '90' | 'custom'>('90');
     const [from, setFrom] = React.useState('');

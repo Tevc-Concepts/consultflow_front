@@ -6,6 +6,7 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@components/ui/Button';
 import Card from '@components/ui/Card';
@@ -251,11 +252,16 @@ export default function DocumentList({ companyId }: DocumentListProps) {
               
               <div className="p-4 max-h-96 overflow-y-auto">
                 {previewDocument.fileType.includes('image') ? (
-                  <img
-                    src={`data:${previewDocument.fileType};base64,${previewDocument.fileContent}`}
-                    alt={previewDocument.fileName}
-                    className="w-full h-auto rounded-lg"
-                  />
+                  <div className="relative w-full h-auto">
+                    <Image
+                      src={`data:${previewDocument.fileType};base64,${previewDocument.fileContent}`}
+                      alt={previewDocument.fileName}
+                      width={1200}
+                      height={800}
+                      className="w-full h-auto rounded-lg"
+                      unoptimized
+                    />
+                  </div>
                 ) : (
                   <div className="text-center py-12">
                     <div className="text-4xl mb-4">

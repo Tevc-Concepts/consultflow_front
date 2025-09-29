@@ -1,21 +1,85 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSuperAdminStore } from '../../../features/superadmin/store';
 import { Consultant } from '../../../features/superadmin/store';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
+import { showToast } from '@shared/components/Toast';
+import ConfirmDialog from '@shared/components/ConfirmDialog';
+import Spinner from '@shared/components/Spinner';
+import LoadingButton from '@shared/components/LoadingButton';
 
 export default function SuperAdminConsultantsPage() {
   const consultants = useSuperAdminStore((state) => state.consultants);
   const updateConsultant = useSuperAdminStore((state) => state.updateConsultant);
+  const deleteConsultant = useSuperAdminStore((state) => state.deleteConsultant);
+  const createConsultant = useSuperAdminStore((state) => state.createConsultant);
+  const subscriptions = useSuperAdminStore((state) => state.subscriptions);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editing, setEditing] = useState<Consultant | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const initialForm = useMemo(() => ({
+    name: '',
+    email: '',
+    plan: 'free' as Consultant['plan'],
+    status: 'active' as Consultant['status'],
+  }), []);
+  const [form, setForm] = useState(initialForm);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [busyById, setBusyById] = useState<Record<string, boolean>>({});
 
-  const toggleStatus = (consultant: Consultant) => {
+  const resetForm = () => setForm(initialForm);
+  const handleChange = (key: keyof typeof form, value: any) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      if (editing) {
+        await updateConsultant(editing.id, {
+          name: form.name.trim(),
+          email: form.email.trim(),
+          plan: form.plan,
+          subscriptionId: form.plan,
+          status: form.status,
+        });
+        setEditing(null);
+        showToast({ title: 'Consultant Updated', message: `${form.name} updated successfully`, type: 'success' });
+      } else {
+        await createConsultant({
+          name: form.name.trim(),
+          email: form.email.trim(),
+          plan: form.plan,
+          status: form.status,
+          clientsCount: 0,
+          subscriptionId: form.plan,
+        } as any);
+        setShowCreateForm(false);
+        showToast({ title: 'Consultant Created', message: `${form.name} added successfully`, type: 'success' });
+      }
+    } catch (err: any) {
+      showToast({ title: 'Action Failed', message: err?.message || 'Could not save consultant', type: 'error' });
+    } finally { setIsSubmitting(false); }
+    resetForm();
+  };
+
+  const toggleStatus = async (consultant: Consultant) => {
+    if (busyById[consultant.id]) return;
     const newStatus = consultant.status === 'active' ? 'suspended' : 'active';
-    updateConsultant(consultant.id, { status: newStatus });
+    setBusyById(s => ({ ...s, [consultant.id]: true }));
+    try {
+      await updateConsultant(consultant.id, { status: newStatus });
+      showToast({ title: 'Consultant Updated', message: `${consultant.name} is now ${newStatus}`, type: 'success' });
+    } catch (err: any) {
+      showToast({ title: 'Update Failed', message: err?.message || 'Could not update status', type: 'error' });
+    } finally {
+      setBusyById(s => ({ ...s, [consultant.id]: false }));
+    }
   };
 
   const toggleExpanded = (id: string) => {
@@ -102,10 +166,12 @@ export default function SuperAdminConsultantsPage() {
                             consultant.status === 'active'
                               ? 'text-red-600 hover:text-red-900'
                               : 'text-green-600 hover:text-green-900'
-                          }`}
+                          } ${busyById[consultant.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          disabled={!!busyById[consultant.id]}
                         >
-                          {consultant.status === 'active' ? '🚫' : '✅'}
+                          {busyById[consultant.id] ? <Spinner size="xs" /> : (consultant.status === 'active' ? '🚫' : '✅')}
                         </button>
+                        <button onClick={() => setConfirmDeleteId(consultant.id)} className="text-red-600 hover:text-red-900">🗑</button>
                       </div>
                     </td>
                   </tr>
@@ -156,9 +222,10 @@ export default function SuperAdminConsultantsPage() {
                     consultant.status === 'active'
                       ? 'text-red-600 hover:text-red-900'
                       : 'text-green-600 hover:text-green-900'
-                  }`}
+                  } ${busyById[consultant.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={!!busyById[consultant.id]}
                 >
-                  {consultant.status === 'active' ? 'Suspend' : 'Activate'}
+                  {busyById[consultant.id] ? '⏳' : consultant.status === 'active' ? 'Suspend' : 'Activate'}
                 </button>
               </div>
 
@@ -175,7 +242,15 @@ export default function SuperAdminConsultantsPage() {
                       <div><strong>Created:</strong> {new Date(consultant.createdAt).toLocaleDateString()}</div>
                       <div><strong>Subscription:</strong> {consultant.subscriptionId || 'None'}</div>
                       <div className="flex space-x-2 pt-2">
-                        <Button size="sm" variant="ghost">
+                        <Button size="sm" variant="ghost" onClick={() => {
+                          setEditing(consultant);
+                          setForm({
+                            name: consultant.name,
+                            email: consultant.email,
+                            plan: (consultant.subscriptionId as any) || consultant.plan,
+                            status: consultant.status,
+                          });
+                        }}>
                           ✏️ Edit
                         </Button>
                         <Button size="sm" variant="ghost">
@@ -191,18 +266,104 @@ export default function SuperAdminConsultantsPage() {
         ))}
       </div>
 
-      {/* Create Consultant Modal/Form would go here */}
-      {showCreateForm && (
+  {/* Create/Edit Consultant Modal */}
+      {(showCreateForm || editing) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <Card className="w-full max-w-md mx-4">
-            <div className="text-center">
-              <h2 className="text-lg font-semibold mb-4">Create Consultant</h2>
-              <p className="text-gray-600 mb-4">Form implementation coming soon...</p>
-              <Button onClick={() => setShowCreateForm(false)}>Close</Button>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">{editing ? 'Edit Consultant' : 'Create Consultant'}</h2>
+              <button
+                onClick={() => { editing ? setEditing(null) : setShowCreateForm(false); resetForm(); }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
             </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => handleChange('name', e.target.value)}
+                  placeholder="Jane Doe"
+                  required
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  placeholder="jane@example.com"
+                  required
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
+                  <select
+                    value={form.plan}
+                    onChange={(e) => handleChange('plan', e.target.value as Consultant['plan'])}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2"
+                  >
+                    {subscriptions.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => handleChange('status', e.target.value as Consultant['status'])}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2"
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => { editing ? setEditing(null) : setShowCreateForm(false); resetForm(); }}>
+                  Cancel
+                </Button>
+                <LoadingButton type="submit" loading={isSubmitting} loadingLabel={editing ? 'Saving…' : 'Creating…'}>
+                  {editing ? 'Save Changes' : 'Create'}
+                </LoadingButton>
+              </div>
+            </form>
           </Card>
         </div>
       )}
+
+      {/* Confirm Delete */}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete Consultant"
+        description="This will permanently remove the consultant. This action cannot be undone."
+        confirmText="Delete"
+        confirmVariant="danger"
+        loading={!!confirmDeleteId && deletingId === confirmDeleteId}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={async () => {
+          const id = confirmDeleteId!;
+          setDeletingId(id);
+          setConfirmDeleteId(null);
+          try {
+            const c = consultants.find(c => c.id === id);
+            await deleteConsultant(id);
+            showToast({ title: 'Consultant Deleted', message: `${c?.name || 'Consultant'} removed`, type: 'info' });
+          } catch (err: any) {
+            showToast({ title: 'Delete Failed', message: err?.message || 'Could not delete consultant', type: 'error' });
+          } finally {
+            setDeletingId(null);
+          }
+        }}
+      />
     </div>
   );
 }

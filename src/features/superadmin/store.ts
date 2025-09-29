@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { superAdminRepository } from './repository';
+import { authRepository } from '@features/auth/repository';
 
 // Types
 export interface SuperAdminUser {
@@ -149,7 +151,8 @@ interface SuperAdminState {
   createReport: (report: Omit<Report, 'id' | 'createdAt'>) => void;
   updateReport: (id: string, updates: Partial<Report>) => void;
 
-  updateFeatureFlag: (id: string, enabled: boolean, consultantIds?: string[]) => void;
+  updateFeatureFlag: (id: string, enabled: boolean, consultantIds?: string[]) => Promise<boolean>;
+  fetchFeatureFlags?: () => Promise<void>;
 
   createTicket: (ticket: Omit<Ticket, 'id' | 'createdAt'>) => void;
   updateTicket: (id: string, updates: Partial<Ticket>) => void;
@@ -360,64 +363,78 @@ export const useSuperAdminStore = create<SuperAdminState>()(
       },
 
       // Consultant CRUD
-      createConsultant: (consultant) => {
+      createConsultant: async (consultant) => {
+        const created = await superAdminRepository.createConsultant({
+          name: consultant.name,
+          email: consultant.email,
+          status: consultant.status,
+          subscriptionId: consultant.subscriptionId || consultant.plan,
+        } as any);
         const newConsultant: Consultant = {
-          ...consultant,
-          id: Date.now().toString(),
-          createdAt: new Date().toISOString()
+          id: created.id,
+          name: created.name,
+          email: created.email,
+          plan: (created.subscriptionId as any) || consultant.plan || 'free',
+          status: created.status as any,
+          clientsCount: created.clientsCount || 0,
+          createdAt: created.createdAt || new Date().toISOString(),
+          subscriptionId: (created.subscriptionId as any) || consultant.subscriptionId,
         };
         set(state => ({ consultants: [...state.consultants, newConsultant] }));
         get().saveData();
         get().addAuditLog({
           userId: get().user?.username || 'system',
           action: 'create_consultant',
-          details: { consultantId: newConsultant.id }
+          details: { consultantId: newConsultant.id, mode: authRepository.getAuthMode() }
         });
       },
 
-      updateConsultant: (id, updates) => {
+      updateConsultant: async (id, updates) => {
+        await superAdminRepository.updateConsultant(id, updates as any);
         set(state => ({
-          consultants: state.consultants.map(c =>
-            c.id === id ? { ...c, ...updates } : c
-          )
+          consultants: state.consultants.map(c => c.id === id ? { ...c, ...updates } : c)
         }));
         get().saveData();
       },
 
-      deleteConsultant: (id) => {
-        set(state => ({
-          consultants: state.consultants.filter(c => c.id !== id)
-        }));
+      deleteConsultant: async (id) => {
+        await superAdminRepository.deleteConsultant(id);
+        set(state => ({ consultants: state.consultants.filter(c => c.id !== id) }));
         get().saveData();
       },
 
       // Subscription CRUD
-      createSubscription: (subscription) => {
+      createSubscription: async (subscription) => {
+        const created = await superAdminRepository.createSubscription(subscription as any);
         const newSubscription: Subscription = {
-          ...subscription,
-          id: Date.now().toString()
+          id: (created as any).id,
+          name: created.name,
+          price: created.price,
+          maxClients: created.maxClients,
+          maxReports: created.maxReports,
+          storageGB: created.storageGB,
+          features: created.features,
         };
         set(state => ({ subscriptions: [...state.subscriptions, newSubscription] }));
         get().saveData();
       },
 
-      updateSubscription: (id, updates) => {
+      updateSubscription: async (id, updates) => {
+        await superAdminRepository.updateSubscription(id, updates as any);
         set(state => ({
-          subscriptions: state.subscriptions.map(s =>
-            s.id === id ? { ...s, ...updates } : s
-          )
+          subscriptions: state.subscriptions.map(s => s.id === id ? { ...s, ...updates } : s)
         }));
         get().saveData();
       },
 
-      deleteSubscription: (id) => {
-        set(state => ({
-          subscriptions: state.subscriptions.filter(s => s.id !== id)
-        }));
+      deleteSubscription: async (id) => {
+        await superAdminRepository.deleteSubscription(id);
+        set(state => ({ subscriptions: state.subscriptions.filter(s => s.id !== id) }));
         get().saveData();
       },
 
-      assignSubscription: (consultantId, subscriptionId) => {
+      assignSubscription: async (consultantId, subscriptionId) => {
+        await superAdminRepository.assignSubscription(consultantId, subscriptionId);
         const subscription: ConsultantSubscription = {
           id: Date.now().toString(),
           consultantId,
@@ -428,86 +445,122 @@ export const useSuperAdminStore = create<SuperAdminState>()(
         };
         set(state => ({
           consultantSubscriptions: [...state.consultantSubscriptions, subscription],
-          consultants: state.consultants.map(c =>
-            c.id === consultantId ? { ...c, subscriptionId, plan: subscriptionId as any } : c
-          )
+          consultants: state.consultants.map(c => c.id === consultantId ? { ...c, subscriptionId, plan: subscriptionId as any } : c)
         }));
         get().saveData();
       },
 
       // Client CRUD
-      createClient: (client) => {
+      createClient: async (client) => {
+        const created = await superAdminRepository.createClient(client as any);
         const newClient: Client = {
-          ...client,
-          id: Date.now().toString(),
-          lastActivity: new Date().toISOString()
+          id: created.id,
+          name: created.name,
+          email: created.email,
+          consultantId: created.consultantId,
+          status: created.status || 'active',
+          reportsCount: created.reportsCount || 0,
+          lastActivity: created.lastActivity || new Date().toISOString(),
         };
         set(state => ({ clients: [...state.clients, newClient] }));
         get().saveData();
       },
 
-      updateClient: (id, updates) => {
+      updateClient: async (id, updates) => {
+        await superAdminRepository.updateClient(id, updates as any);
         set(state => ({
-          clients: state.clients.map(c =>
-            c.id === id ? { ...c, ...updates } : c
-          )
+          clients: state.clients.map(c => c.id === id ? { ...c, ...updates } : c)
         }));
         get().saveData();
       },
 
-      deleteClient: (id) => {
-        set(state => ({
-          clients: state.clients.filter(c => c.id !== id)
-        }));
+      deleteClient: async (id) => {
+        await superAdminRepository.deleteClient(id);
+        set(state => ({ clients: state.clients.filter(c => c.id !== id) }));
         get().saveData();
       },
 
       // Report operations
-      createReport: (report) => {
+      createReport: async (report) => {
+        const created = await superAdminRepository.createReport(report as any);
         const newReport: Report = {
-          ...report,
-          id: Date.now().toString(),
-          createdAt: new Date().toISOString()
+          id: created.id || Date.now().toString(),
+          consultantId: created.consultantId || (report as any).consultantId,
+          clientId: created.clientId || (report as any).clientId,
+          type: created.type || (report as any).type,
+          status: created.status || 'pending',
+          createdAt: created.createdAt || new Date().toISOString(),
+          approvedAt: created.approvedAt,
         };
         set(state => ({ reports: [...state.reports, newReport] }));
         get().saveData();
       },
 
-      updateReport: (id, updates) => {
+      updateReport: async (id, updates) => {
+        await superAdminRepository.updateReport(id, updates as any);
         set(state => ({
-          reports: state.reports.map(r =>
-            r.id === id ? { ...r, ...updates } : r
-          )
+          reports: state.reports.map(r => r.id === id ? { ...r, ...updates } : r)
         }));
         get().saveData();
       },
 
-      // Feature flags
-      updateFeatureFlag: (id, enabled, consultantIds = []) => {
+  // Feature flags
+      updateFeatureFlag: async (id, enabled, consultantIds = []) => {
+        // Update local immediately for responsiveness
         set(state => ({
-          featureFlags: state.featureFlags.map(f =>
-            f.id === id ? { ...f, enabled, consultantIds } : f
-          )
+          featureFlags: state.featureFlags.map(f => f.id === id ? { ...f, enabled, consultantIds } : f)
         }));
         get().saveData();
+        try {
+          await superAdminRepository.updateFeatureFlag(id, enabled, consultantIds);
+          return true;
+        } catch (e) {
+          // Revert on failure in live mode
+          const mode = authRepository.getAuthMode();
+          if (mode === 'live') {
+            set(state => ({
+              featureFlags: state.featureFlags.map(f => f.id === id ? { ...f, enabled: !enabled } : f)
+            }));
+          }
+          return false;
+        }
+      },
+      fetchFeatureFlags: async () => {
+        // Only meaningful in live mode; in demo, flags are local
+        try {
+          const mode = authRepository.getAuthMode();
+          if (mode === 'live') {
+            const flags = await superAdminRepository.listFeatureFlags();
+            set(state => ({
+              featureFlags: flags.length ? flags as any : state.featureFlags
+            }));
+          }
+        } catch (e) {
+          // ignore silently for now
+        }
       },
 
       // Tickets
-      createTicket: (ticket) => {
+      createTicket: async (ticket) => {
+        const created = await superAdminRepository.createTicket(ticket as any);
         const newTicket: Ticket = {
-          ...ticket,
-          id: Date.now().toString(),
-          createdAt: new Date().toISOString()
+          id: created.id,
+          title: created.subject || created.title || 'Ticket',
+          description: created.description,
+          consultantId: created.consultantId!,
+          priority: created.priority as any,
+          status: (created.status as any) || 'open',
+          createdAt: created.createdAt,
+          resolvedAt: created.resolvedAt,
         };
         set(state => ({ tickets: [...state.tickets, newTicket] }));
         get().saveData();
       },
 
-      updateTicket: (id, updates) => {
+      updateTicket: async (id, updates) => {
+        await superAdminRepository.updateTicket(id, updates as any);
         set(state => ({
-          tickets: state.tickets.map(t =>
-            t.id === id ? { ...t, ...updates } : t
-          )
+          tickets: state.tickets.map(t => t.id === id ? { ...t, ...updates } : t)
         }));
         get().saveData();
       },

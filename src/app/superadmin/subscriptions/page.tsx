@@ -1,23 +1,67 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSuperAdminStore } from '../../../features/superadmin/store';
 import { Subscription, ConsultantSubscription } from '../../../features/superadmin/store';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
+import { showToast } from '@shared/components/Toast';
+import ConfirmDialog from '@shared/components/ConfirmDialog';
+import Spinner from '@shared/components/Spinner';
+import LoadingButton from '@shared/components/LoadingButton';
 
 export default function SuperAdminSubscriptionsPage() {
   const subscriptions = useSuperAdminStore((state) => state.subscriptions);
   const consultants = useSuperAdminStore((state) => state.consultants);
   const consultantSubscriptions = useSuperAdminStore((state) => state.consultantSubscriptions);
   const assignSubscription = useSuperAdminStore((state) => state.assignSubscription);
+  const deleteSubscription = useSuperAdminStore((state) => state.deleteSubscription);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [busyPlan, setBusyPlan] = useState<Record<string, boolean>>({});
+  const [assigningFor, setAssigningFor] = useState<string | null>(null);
+  const createSubscription = useSuperAdminStore((state) => state.createSubscription);
+  const [planForm, setPlanForm] = useState({ name: 'Pro', price: 0, maxClients: 10, maxReports: 100, storageGB: 10, features: '' });
+  const updatePlanField = (k: string, v: any) => setPlanForm(prev => ({ ...prev, [k]: v }));
+  const handleCreatePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      name: planForm.name as any,
+      price: Number(planForm.price) || 0,
+      maxClients: Number(planForm.maxClients) || -1,
+      maxReports: Number(planForm.maxReports) || -1,
+      storageGB: Number(planForm.storageGB) || 0,
+      features: planForm.features.split(',').map(f => f.trim()).filter(Boolean),
+    };
+    if (isCreatingPlan) return;
+    setIsCreatingPlan(true);
+    try {
+      await createSubscription(payload as any);
+      setShowCreateForm(false);
+      setPlanForm({ name: 'Pro', price: 0, maxClients: 10, maxReports: 100, storageGB: 10, features: '' });
+      showToast({ title: 'Plan Created', message: `${payload.name} plan added`, type: 'success' });
+    } catch (err: any) {
+      showToast({ title: 'Create Failed', message: err?.message || 'Could not create plan', type: 'error' });
+    } finally {
+      setIsCreatingPlan(false);
+    }
+  };
   const [selectedConsultant, setSelectedConsultant] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const handleAssignSubscription = (consultantId: string, subscriptionId: string) => {
-    assignSubscription(consultantId, subscriptionId);
-    setSelectedConsultant(null);
+  const handleAssignSubscription = async (consultantId: string, subscriptionId: string) => {
+    if (assigningFor) return;
+    setAssigningFor(consultantId);
+    try {
+      await assignSubscription(consultantId, subscriptionId);
+      setSelectedConsultant(null);
+      showToast({ title: 'Plan Assigned', message: 'Subscription updated successfully.', type: 'success' });
+    } catch (err: any) {
+      showToast({ title: 'Assignment Failed', message: err?.message || 'Could not assign plan', type: 'error' });
+    } finally {
+      setAssigningFor(null);
+    }
   };
 
   const getConsultantSubscription = (consultantId: string) => {
@@ -55,10 +99,40 @@ export default function SuperAdminSubscriptionsPage() {
                   <li key={index}>✓ {feature}</li>
                 ))}
               </ul>
+              <div className="mt-4">
+                <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(subscription.id)} disabled={!!busyPlan[subscription.id]}>
+                  {busyPlan[subscription.id] ? <Spinner label="Deleting…" size="xs" /> : '🗑 Delete Plan'}
+                </Button>
+              </div>
             </div>
           </Card>
         ))}
       </div>
+
+      {/* Confirm Delete Plan */}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete Plan"
+        description="This will permanently remove the subscription plan."
+        confirmText="Delete"
+        confirmVariant="danger"
+        loading={!!(confirmDeleteId && busyPlan[confirmDeleteId])}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={async () => {
+          const id = confirmDeleteId!;
+          setBusyPlan(s => ({ ...s, [id]: true }));
+          try {
+            const plan = subscriptions.find(p => p.id === id);
+            await deleteSubscription(id);
+            showToast({ title: 'Plan Deleted', message: `${plan?.name || 'Plan'} removed`, type: 'info' });
+            setConfirmDeleteId(null);
+          } catch (err: any) {
+            showToast({ title: 'Delete Failed', message: err?.message || 'Could not delete plan', type: 'error' });
+          } finally {
+            setBusyPlan(s => ({ ...s, [id]: false }));
+          }
+        }}
+      />
 
       {/* Consultant Subscriptions */}
       <Card>
@@ -153,9 +227,9 @@ export default function SuperAdminSubscriptionsPage() {
                 ))}
               </div>
               <div className="mt-4 flex justify-end">
-                <Button variant="ghost" onClick={() => setSelectedConsultant(null)}>
+                <LoadingButton variant="ghost" onClick={() => setSelectedConsultant(null)} loading={!!assigningFor} loadingLabel="Working…" spinnerSize="xs">
                   Cancel
-                </Button>
+                </LoadingButton>
               </div>
             </Card>
           </motion.div>
@@ -173,12 +247,50 @@ export default function SuperAdminSubscriptionsPage() {
           >
             <Card className="w-full max-w-md mx-4">
               <h2 className="text-lg font-semibold mb-4">Create Subscription Plan</h2>
-              <p className="text-gray-600 mb-4">Plan creation form coming soon...</p>
-              <div className="flex justify-end">
-                <Button variant="ghost" onClick={() => setShowCreateForm(false)}>
-                  Close
-                </Button>
-              </div>
+              <form onSubmit={handleCreatePlan} className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <select
+                      value={planForm.name}
+                      onChange={(e) => updatePlanField('name', e.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2"
+                    >
+                      <option>Free</option>
+                      <option>Pro</option>
+                      <option>Enterprise</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Price (₦)</label>
+                    <input type="number" value={planForm.price} onChange={(e) => updatePlanField('price', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Max Clients</label>
+                    <input type="number" value={planForm.maxClients} onChange={(e) => updatePlanField('maxClients', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Max Reports</label>
+                    <input type="number" value={planForm.maxReports} onChange={(e) => updatePlanField('maxReports', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Storage (GB)</label>
+                    <input type="number" value={planForm.storageGB} onChange={(e) => updatePlanField('storageGB', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Features (comma-separated)</label>
+                  <input type="text" value={planForm.features} onChange={(e) => updatePlanField('features', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2" placeholder="Advanced reporting, Priority support" />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="ghost" onClick={() => setShowCreateForm(false)} disabled={isCreatingPlan}>Cancel</Button>
+                  <LoadingButton type="submit" loading={isCreatingPlan} loadingLabel="Creating…">
+                    Create Plan
+                  </LoadingButton>
+                </div>
+              </form>
             </Card>
           </motion.div>
         )}

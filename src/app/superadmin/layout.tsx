@@ -3,7 +3,6 @@
 import { ReactNode, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { SuperAdminSidebar } from '@features/superadmin/components/SuperAdminSidebar';
-import { SuperAdminNavbar } from '@features/superadmin/components/SuperAdminNavbar';
 import { useSuperAdminStore } from '@features/superadmin/store';
 
 interface SuperAdminLayoutProps {
@@ -31,7 +30,6 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <SuperAdminNavbar />
       <div className="flex">
         <SuperAdminSidebar />
         <main className="flex-1 p-6">

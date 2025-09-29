@@ -4,10 +4,39 @@ import { useSuperAdminStore } from '../../../features/superadmin/store';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useMemo, useState } from 'react';
+import { showToast } from '../../../shared/components/Toast';
+import Spinner from '../../../shared/components/Spinner';
+import LoadingButton from '../../../shared/components/LoadingButton';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function SuperAdminReportsPage() {
   const reports = useSuperAdminStore((state) => state.reports);
   const consultants = useSuperAdminStore((state) => state.consultants);
+  const clients = useSuperAdminStore((state) => state.clients);
+  const createReport = useSuperAdminStore((state) => state.createReport);
+  const updateReport = useSuperAdminStore((state) => state.updateReport);
+  const [showCreate, setShowCreate] = useState(false);
+  const initial = useMemo(() => ({ consultantId: consultants[0]?.id || '', clientId: '', type: 'P&L', status: 'pending' }), [consultants]);
+  const [form, setForm] = useState(initial);
+  const [isCreating, setIsCreating] = useState(false);
+  const [savingById, setSavingById] = useState<Record<string, boolean>>({});
+  const change = (k: string, v: any) => setForm(prev => ({ ...prev, [k]: v }));
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isCreating) return;
+    setIsCreating(true);
+    try {
+      await createReport({ ...form } as any);
+      setShowCreate(false);
+      setForm(initial);
+      showToast({ title: 'Report Created', message: 'The report has been created successfully.', type: 'success' });
+    } catch (err: any) {
+      showToast({ title: 'Create Failed', message: err?.message || 'Unable to create report.', type: 'error' });
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   // Mock data for demonstration
   const reportStatusData = [
@@ -59,6 +88,7 @@ export default function SuperAdminReportsPage() {
           <Button variant="ghost" onClick={handleExportPDF}>
             📄 Export PDF
           </Button>
+          <Button onClick={() => setShowCreate(true)}>+ Create Report</Button>
         </div>
       </div>
 
@@ -165,46 +195,111 @@ export default function SuperAdminReportsPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Date
                 </th>
+                <th className="px-6 py-3" />
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {/* Mock data for demonstration */}
-              {[
-                { consultant: 'John Smith', client: 'ABC Corp', type: 'P&L Statement', status: 'approved', date: '2024-09-25' },
-                { consultant: 'Sarah Johnson', client: 'Tech Solutions', type: 'Balance Sheet', status: 'pending', date: '2024-09-24' },
-                { consultant: 'John Smith', client: 'XYZ Ltd', type: 'Tax Summary', status: 'approved', date: '2024-09-23' },
-                { consultant: 'Sarah Johnson', client: 'ABC Corp', type: 'Cash Flow', status: 'rejected', date: '2024-09-22' },
-              ].map((report, index) => (
-                <tr key={index}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {report.consultant}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {report.client}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {report.type}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      report.status === 'approved'
-                        ? 'bg-green-100 text-green-800'
-                        : report.status === 'rejected'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {report.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {report.date}
-                  </td>
-                </tr>
-              ))}
+              {reports.slice(-10).reverse().map((r) => {
+                const consultant = consultants.find(c => c.id === r.consultantId);
+                const client = clients.find(cl => cl.id === r.clientId);
+                const statusClass = r.status === 'approved' ? 'bg-green-100 text-green-800' : r.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800';
+                return (
+                  <tr key={r.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{consultant?.name || '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{client?.name || '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{r.type}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusClass}`}>{r.status}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(r.createdAt).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <select
+                        value={r.status}
+                        onChange={async (e) => {
+                          const newStatus = e.target.value;
+                          if (savingById[r.id]) return;
+                          setSavingById((s) => ({ ...s, [r.id]: true }));
+                          try {
+                            await updateReport(r.id, { status: newStatus as any });
+                            showToast({ title: 'Status Updated', message: `Report status set to ${newStatus}.`, type: 'success' });
+                          } catch (err: any) {
+                            showToast({ title: 'Update Failed', message: err?.message || 'Could not update status.', type: 'error' });
+                          } finally {
+                            setSavingById((s) => ({ ...s, [r.id]: false }));
+                          }
+                        }}
+                        className="rounded-md border border-gray-300 px-2 py-1 text-xs disabled:opacity-50"
+                        disabled={!!savingById[r.id]}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="under_review">Under Review</option>
+                      </select>
+                      {savingById[r.id] && (
+                        <span className="ml-2 align-middle"><Spinner size="xs" /></span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </Card>
+
+      {/* Create Report Modal */}
+      <AnimatePresence>
+        {showCreate && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+            <Card className="w-full max-w-md mx-4">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-lg font-semibold">Create Report</h2>
+                <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              <form onSubmit={submit} className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Consultant</label>
+                  <select value={form.consultantId} onChange={(e) => change('consultantId', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2">
+                    {consultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Client</label>
+                  <select value={form.clientId} onChange={(e) => change('clientId', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2">
+                    {clients.map(cl => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <select value={form.type} onChange={(e) => change('type', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2">
+                      <option value="P&L">P&L</option>
+                      <option value="Balance Sheet">Balance Sheet</option>
+                      <option value="Cash Flow">Cash Flow</option>
+                      <option value="Forecast">Forecast</option>
+                      <option value="Tax Report">Tax Report</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select value={form.status} onChange={(e) => change('status', e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2">
+                      <option value="pending">Pending</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Rejected</option>
+                      <option value="under_review">Under Review</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="ghost" onClick={() => setShowCreate(false)} disabled={isCreating}>Cancel</Button>
+                  <LoadingButton type="submit" loading={isCreating} loadingLabel="Creating…">Create</LoadingButton>
+                </div>
+              </form>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

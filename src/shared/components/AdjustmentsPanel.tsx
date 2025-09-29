@@ -27,7 +27,7 @@ export default function AdjustmentsPanel() {
     const dataSource = useAppStore((s: AppState) => s.dataSource);
     const demoMode = useAppStore((s: AppState) => s.demoMode);
     // Memoize API instance so effects/callbacks don't re-create on every render
-    const api = React.useMemo(() => getApi(), [dataSource, demoMode]);
+    const api = React.useMemo(() => getApi(), []);
 
     const loadCompanies = React.useCallback(async () => {
         try {

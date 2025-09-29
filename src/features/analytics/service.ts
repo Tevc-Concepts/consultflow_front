@@ -1,4 +1,6 @@
 import { frappeAPI } from '@shared/api/client';
+import { getReports } from '@shared/data/demoDb';
+import { useAppStore } from '@shared/state/app';
 
 export interface FinancialMetrics {
     profitability: {
@@ -68,7 +70,64 @@ class AnalyticsService {
         start_date: string;
         end_date: string;
     }): Promise<FinancialMetrics> {
-        // Fetch financial statements
+        // Decide data source: prefer env, then app store. When not 'frappe', use local demo DB.
+        const envDs = (process.env.NEXT_PUBLIC_DATA_SOURCE || '').toLowerCase();
+        const storeDs = (() => {
+            try { return (useAppStore.getState().dataSource || '').toLowerCase(); } catch { return ''; }
+        })();
+        const dataSource = (envDs || storeDs || 'sqlite');
+
+        if (dataSource !== 'frappe') {
+            // Demo/local: derive metrics from local demo reports (no network)
+            const safeCompany = ['lagos', 'accra', 'abuja'].includes(companyId) ? companyId : 'lagos';
+            const report = getReports({ company: safeCompany, range: 'custom', from: period.start_date, to: period.end_date });
+            const s = report.series;
+            const last = s[s.length - 1] || { revenue: 0, cogs: 0, expenses: 0, cash: 0 } as any;
+            const bsLines = report.balanceSheet.lines.reduce<Record<string, number>>((acc, l) => {
+                acc[l.key] = l.amount; return acc;
+            }, {});
+            const revenue = last.revenue || 0;
+            const cogs = last.cogs || 0;
+            const operating_income = (last.revenue || 0) - (last.cogs || 0) - (last.expenses || 0);
+            const net_income = operating_income;
+            const total_assets = (bsLines['ta'] ?? 0) || Math.max(1, (last.cash || 0) + (bsLines['ar'] ?? 0) + (bsLines['inv'] ?? 0));
+            const current_assets = (last.cash || 0) + (bsLines['ar'] ?? 0) + (bsLines['inv'] ?? 0);
+            const ap = Math.abs(bsLines['ap'] ?? 0);
+            const accr = Math.abs(bsLines['accr'] ?? 0);
+            const current_liabilities = Math.max(1, ap + accr);
+            const total_debt = Math.abs(bsLines['debt'] ?? 0);
+            const total_equity = Math.max(1, Math.abs(bsLines['eq'] ?? (total_assets - (ap + accr + total_debt))));
+
+            return {
+                profitability: {
+                    gross_margin: revenue > 0 ? (revenue - cogs) / revenue : 0,
+                    operating_margin: revenue > 0 ? operating_income / revenue : 0,
+                    net_margin: revenue > 0 ? net_income / revenue : 0,
+                    return_on_assets: total_assets > 0 ? net_income / total_assets : 0,
+                    return_on_equity: total_equity > 0 ? net_income / total_equity : 0
+                },
+                liquidity: {
+                    current_ratio: current_liabilities > 0 ? current_assets / current_liabilities : 0,
+                    quick_ratio: current_liabilities > 0 ? ((last.cash || 0) + (bsLines['ar'] ?? 0)) / current_liabilities : 0,
+                    cash_ratio: current_liabilities > 0 ? (last.cash || 0) / current_liabilities : 0,
+                    working_capital: current_assets - current_liabilities
+                },
+                efficiency: {
+                    asset_turnover: total_assets > 0 ? revenue / total_assets : 0,
+                    inventory_turnover: (bsLines['inv'] ?? 0) > 0 ? (cogs) / Math.max(1, (bsLines['inv'] ?? 0)) : 6,
+                    receivables_turnover: (bsLines['ar'] ?? 0) > 0 ? revenue / Math.max(1, (bsLines['ar'] ?? 0)) : 8,
+                    payables_turnover: ap > 0 ? cogs / Math.max(1, ap) : 4
+                },
+                leverage: {
+                    debt_to_equity: total_equity > 0 ? total_debt / total_equity : 0,
+                    debt_to_assets: total_assets > 0 ? total_debt / total_assets : 0,
+                    interest_coverage: total_debt > 0 ? operating_income / Math.max(1, total_debt * 0.1) : 5,
+                    equity_multiplier: total_equity > 0 ? total_assets / total_equity : 0
+                }
+            };
+        }
+
+        // Frappe mode: fetch financial statements from server
         const [plData, bsData, cfData] = await Promise.all([
             frappeAPI.generateProfitLoss({
                 company: companyId,

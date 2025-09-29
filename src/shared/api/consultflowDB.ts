@@ -817,6 +817,144 @@ class ConsultFlowMockDB {
   }
 
   // Update methods
+  // ------------------ Consultants ------------------
+  public addConsultant(input: Omit<Consultant, 'id' | 'createdAt' | 'clients'> & { clients?: string[] }): Consultant {
+    const data = this.getStorage();
+    const consultants: Consultant[] = data.consultants || [];
+    const newConsultant: Consultant = {
+      id: `consultant-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      createdAt: new Date().toISOString(),
+      clients: [],
+      ...input,
+    };
+    if (input.clients) newConsultant.clients = input.clients;
+    consultants.push(newConsultant);
+    this.setStorage({ ...data, consultants });
+    return newConsultant;
+  }
+
+  public updateConsultant(id: string, updates: Partial<Consultant>): Consultant | null {
+    const data = this.getStorage();
+    const consultants: Consultant[] = data.consultants || [];
+    const idx = consultants.findIndex(c => c.id === id);
+    if (idx === -1) return null;
+    const updated: Consultant = { ...consultants[idx], ...updates };
+    consultants[idx] = updated;
+    this.setStorage({ ...data, consultants });
+    return updated;
+  }
+
+  public deleteConsultant(id: string): boolean {
+    const data = this.getStorage();
+    const consultants: Consultant[] = data.consultants || [];
+    const newList = consultants.filter(c => c.id !== id);
+    const changed = newList.length !== consultants.length;
+    if (changed) this.setStorage({ ...data, consultants: newList });
+    return changed;
+  }
+
+  // ------------------ Clients ------------------
+  public addClient(input: Omit<Client, 'id' | 'createdAt'>): Client {
+    const data = this.getStorage();
+    const clients: Client[] = data.clients || [];
+    const newClient: Client = {
+      id: `client-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      createdAt: new Date().toISOString(),
+      ...input,
+    };
+    clients.push(newClient);
+    this.setStorage({ ...data, clients });
+    return newClient;
+  }
+
+  public updateClient(id: string, updates: Partial<Client>): Client | null {
+    const data = this.getStorage();
+    const clients: Client[] = data.clients || [];
+    const idx = clients.findIndex(c => c.id === id);
+    if (idx === -1) return null;
+    const updated: Client = { ...clients[idx], ...updates };
+    clients[idx] = updated;
+    this.setStorage({ ...data, clients });
+    return updated;
+  }
+
+  public deleteClient(id: string): boolean {
+    const data = this.getStorage();
+    const clients: Client[] = data.clients || [];
+    const newList = clients.filter(c => c.id !== id);
+    const changed = newList.length !== clients.length;
+    if (changed) this.setStorage({ ...data, clients: newList });
+    return changed;
+  }
+
+  // ------------------ Subscription Plans ------------------
+  public addSubscriptionPlan(input: Omit<SubscriptionPlan, 'id'> & { id?: string }): SubscriptionPlan {
+    const data = this.getStorage();
+    const plans: SubscriptionPlan[] = data.subscriptionPlans || [];
+    const plan: SubscriptionPlan = {
+      id: input.id || `plan-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      ...input,
+    };
+    plans.push(plan);
+    this.setStorage({ ...data, subscriptionPlans: plans });
+    return plan;
+  }
+
+  public updateSubscriptionPlan(id: string, updates: Partial<SubscriptionPlan>): SubscriptionPlan | null {
+    const data = this.getStorage();
+    const plans: SubscriptionPlan[] = data.subscriptionPlans || [];
+    const idx = plans.findIndex(p => p.id === id);
+    if (idx === -1) return null;
+    const updated = { ...plans[idx], ...updates } as SubscriptionPlan;
+    plans[idx] = updated;
+    this.setStorage({ ...data, subscriptionPlans: plans });
+    return updated;
+  }
+
+  public deleteSubscriptionPlan(id: string): boolean {
+    const data = this.getStorage();
+    const plans: SubscriptionPlan[] = data.subscriptionPlans || [];
+    const newList = plans.filter(p => p.id !== id);
+    const changed = newList.length !== plans.length;
+    if (changed) this.setStorage({ ...data, subscriptionPlans: newList });
+    return changed;
+  }
+
+  public assignConsultantPlan(consultantId: string, planId: string): Consultant | null {
+    return this.updateConsultant(consultantId, { subscriptionPlanId: planId });
+  }
+
+  // ------------------ Tickets ------------------
+  public createTicket(input: Omit<Ticket, 'id' | 'createdAt' | 'lastUpdated' | 'responses'> & { responses?: TicketResponse[] }): Ticket {
+    const data = this.getStorage();
+    const tickets: Ticket[] = data.tickets || [];
+    const newTicket: Ticket = {
+      id: `ticket-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      createdAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+      responses: [],
+      ...input,
+    };
+    if (input.responses) newTicket.responses = input.responses;
+    tickets.push(newTicket);
+    this.setStorage({ ...data, tickets });
+    return newTicket;
+  }
+
+  public updateTicket(ticketId: string, updates: Partial<Ticket>): Ticket | null {
+    const data = this.getStorage();
+    const tickets: Ticket[] = data.tickets || [];
+    const idx = tickets.findIndex(t => t.id === ticketId);
+    if (idx === -1) return null;
+    const updated: Ticket = { ...tickets[idx], ...updates, lastUpdated: new Date().toISOString() };
+    // Ensure resolvedAt if status becomes resolved/closed
+    if ((updates.status === 'resolved' || updates.status === 'closed') && !updated.resolvedAt) {
+      updated.resolvedAt = new Date().toISOString();
+    }
+    tickets[idx] = updated;
+    this.setStorage({ ...data, tickets });
+    return updated;
+  }
   public updateTicketStatus(ticketId: string, status: Ticket['status']): boolean {
     const data = this.getStorage();
     const tickets: Ticket[] = data.tickets || [];
@@ -868,6 +1006,31 @@ class ConsultFlowMockDB {
     
     this.setStorage({ ...data, documents });
     return true;
+  }
+
+  // ------------------ Financial Reports ------------------
+  public addFinancialReport(input: Omit<FinancialReport, 'id' | 'createdAt'>): FinancialReport {
+    const data = this.getStorage();
+    const reports: FinancialReport[] = data.financialReports || [];
+    const report: FinancialReport = {
+      id: `report-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      createdAt: new Date().toISOString(),
+      ...input,
+    };
+    reports.push(report);
+    this.setStorage({ ...data, financialReports: reports });
+    return report;
+  }
+
+  public updateFinancialReport(id: string, updates: Partial<FinancialReport>): FinancialReport | null {
+    const data = this.getStorage();
+    const reports: FinancialReport[] = data.financialReports || [];
+    const idx = reports.findIndex(r => r.id === id);
+    if (idx === -1) return null;
+    const updated = { ...reports[idx], ...updates } as FinancialReport;
+    reports[idx] = updated;
+    this.setStorage({ ...data, financialReports: reports });
+    return updated;
   }
 
   // Clear database (for testing)
