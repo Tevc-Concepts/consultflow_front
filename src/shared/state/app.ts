@@ -5,10 +5,14 @@ import { create, type StateCreator } from 'zustand';
 export type Currency = 'NGN' | 'USD' | 'CFA' | 'KES' | 'ZAR' | 'GHS' | 'MAD';
 
 export type FXRate = {
-    // stored as base NGN -> quote currency rate, e.g., {USD: 1500} means 1 USD = 1500 NGN
+    // Historical monthly snapshot; we keep a per-USD map for multiple currencies when available
     month: string; // YYYY-MM
     NGN_USD?: number;
-    NGN_CFA?: number;
+    KES_USD?: number;
+    ZAR_USD?: number;
+    GHS_USD?: number;
+    MAD_USD?: number;
+    CFA_USD?: number;
 };
 
 export type AppState = {
@@ -88,12 +92,21 @@ function persist() {
     } catch { }
 }
 
-export function convertAmount(amountNGN: number, currency: Currency, fx?: FXRate): number {
-    if (currency === 'NGN') return amountNGN;
-    const rate = currency === 'USD' ? fx?.NGN_USD : fx?.NGN_CFA;
-    if (!rate || rate === 0) return amountNGN; // fallback
-    // Convert NGN -> target currency
-    return amountNGN / rate;
+import { convertCurrency as convertCurrencyUtil } from '@shared/utils/fx';
+
+export function convertAmount(amountInNGN: number, currency: Currency, fx?: FXRate): number {
+    // Backwards compatible helper specifically for NGN -> target
+    if (currency === 'NGN') return amountInNGN;
+    const perUsd = fx ? {
+        NGN_USD: fx.NGN_USD,
+        KES_USD: fx.KES_USD,
+        ZAR_USD: fx.ZAR_USD,
+        GHS_USD: fx.GHS_USD,
+        MAD_USD: fx.MAD_USD,
+        CFA_USD: fx.CFA_USD,
+    } : undefined;
+    // Convert NGN -> target using the general converter
+    return convertCurrencyUtil(amountInNGN, 'NGN', currency, perUsd as any);
 }
 
 export function formatCurrency(amount: number, currency: Currency): string {

@@ -327,6 +327,11 @@ const ClientDetailsPanel: React.FC<{
           <div className="text-right">
             <div className="text-sm text-deep-navy/50">Currency</div>
             <div className="font-semibold text-deep-navy">{company.currency}</div>
+            <div className="mt-2 flex gap-2 justify-end">
+              <a className="text-xs px-2 py-1 rounded-full bg-cobalt text-white" href={`/consultant/companies/${company.id}/chart-of-accounts`}>CoA</a>
+              <a className="text-xs px-2 py-1 rounded-full bg-cobalt text-white" href={`/consultant/companies/${company.id}/trial-balance`}>TB</a>
+              <a className="text-xs px-2 py-1 rounded-full bg-cobalt text-white" href={`/consultant/companies/${company.id}/tax-templates`}>Tax</a>
+            </div>
           </div>
         </div>
 

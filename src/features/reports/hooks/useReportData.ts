@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import getApi from '@shared/api/client';
 import { useAppStore, convertAmount, formatCurrency as formatCurrencyUtil } from '@shared/state/app';
 import { ReportsResponse, Transaction, PLRow, ReportFilters } from '../types';
+import { accountingRepository, computePLFromTB } from '@shared/repositories/accountingRepository';
 
 function uid() { 
     return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -27,6 +28,22 @@ export function useReportData(companyId = '', range = '90', from?: string, to?: 
             setError(null);
             
             try {
+                // 1) Prefer Trial Balance + CoA if available (demo-ready, API-ready)
+                accountingRepository.seedDemo();
+                const cid = companyId || 'lagos-ng';
+                const tbs = accountingRepository.listTB(cid).sort((a,b) => a.periodEnd.localeCompare(b.periodEnd));
+                const latest = tbs[tbs.length - 1];
+                const coa = accountingRepository.listCoA(cid);
+                if (latest && coa.length) {
+                    const pl = computePLFromTB(coa, latest);
+                    const resp: ReportsResponse = {
+                        series: [ { date: latest.periodEnd, revenue: pl.revenue, cogs: pl.cogs, expenses: pl.opex, cash: 0 } ]
+                    } as any;
+                    if (mounted) { setData(resp); setLoading(false); }
+                    return;
+                }
+
+                // 2) Fallback to existing API endpoints
                 const api = getApi();
                 const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE || 'localDb';
                 const endpoint = dataSource === 'demo' ? '/api/demo/reports' : 
@@ -35,13 +52,30 @@ export function useReportData(companyId = '', range = '90', from?: string, to?: 
                 const response = await api.get<ReportsResponse>(endpoint, {
                     params: { company: companyId, range, from, to, currency: reportingCurrency }
                 });
-                
-                if (mounted) {
-                    setData(response.data);
-                }
+                if (mounted) { setData(response.data); }
             } catch (err: any) {
                 if (mounted) {
-                    setError(err?.message ?? 'Failed to load data');
+                    // Fallback to TB+CoA local computation
+                    try {
+                        accountingRepository.seedDemo();
+                        const tbs = accountingRepository.listTB(companyId || 'lagos-ng');
+                        const latest = tbs.sort((a,b) => a.periodEnd.localeCompare(b.periodEnd)).slice(-1)[0];
+                        const coa = accountingRepository.listCoA(companyId || 'lagos-ng');
+                        if (latest && coa.length) {
+                            const pl = computePLFromTB(coa, latest);
+                            const fake: ReportsResponse = {
+                                series: [
+                                    { date: latest.periodEnd, revenue: pl.revenue, cogs: pl.cogs, expenses: pl.opex, cash: 0 }
+                                ]
+                            } as any;
+                            setData(fake);
+                            setError(null);
+                        } else {
+                            setError(err?.message ?? 'Failed to load data');
+                        }
+                    } catch (e) {
+                        setError(err?.message ?? 'Failed to load data');
+                    }
                 }
             } finally {
                 if (mounted) {

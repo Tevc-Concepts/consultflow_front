@@ -29,6 +29,8 @@ const getNavigationItems = (role: 'consultant' | 'client' | 'superadmin') => {
       { href: '/superadmin/features', label: 'Features', icon: '⚙️' },
       { href: '/superadmin/tickets', label: 'Support', icon: '🎫' },
       { href: '/superadmin/system', label: 'System', icon: '🖥️' },
+      { href: '/superadmin/system/country-templates', label: 'Country Templates', icon: '🌍' },
+      { href: '/superadmin/system/industry-templates', label: 'Industry CoA', icon: '🏭' },
     ];
   } else if (role === 'consultant') {
     return [

@@ -5,6 +5,8 @@ import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import getApi from '@shared/api/client';
 import { useAppStore, type AppState, convertAmount, formatCurrency } from '@shared/state/app';
+import { useFxRates } from '@shared/hooks/useFx';
+import { accountingRepository } from '@shared/repositories/accountingRepository';
 
 type ReportsResp = {
     series: Array<{ date: string; revenue: number; cogs?: number; expenses: number; cash?: number }>;
@@ -31,7 +33,8 @@ export default function BalanceSheetTable() {
     const [rows, setRows] = React.useState<Row[]>([]);
 
     const [fxLast, setFxLast] = React.useState<{ month: string; usd: number; cfa: number } | null>(null);
-    const fmt = React.useCallback((n: number) => formatCurrency(convertAmount(n, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined), reportingCurrency), [reportingCurrency, fxLast]);
+    const { convert: fxConvert } = useFxRates();
+    const fmt = React.useCallback((n: number) => formatCurrency(n, reportingCurrency), [reportingCurrency]);
 
     const queryParams = React.useMemo(() => ({
         companyParam: (consolidated && selectedCompanyIds.length > 0 ? selectedCompanyIds.join(',') : company),
@@ -50,20 +53,24 @@ export default function BalanceSheetTable() {
                 if (ex && ex.length) setFxLast(ex[ex.length - 1]!);
                 const bs = (res.data as any).balanceSheet as ReportsResp['balanceSheet'];
                 if (bs?.lines?.length) {
+                    // API already returns in requested currency
                     setRows(bs.lines);
                 } else if (series && series.length) {
                     // Fallback compute totals from latest period
                     const last = series[series.length - 1]!;
-                    const assets = Math.max(0, (last.cash ?? 0) + Math.round((last.revenue ?? 0) * 0.3)); // cash + AR proxy
-                    const inventory = Math.round((last.cogs ?? 0) * 0.2);
-                    const totalAssets = (last.cash ?? 0) + assets + inventory;
-                    const ap = Math.round((last.cogs ?? 0) * 0.1);
-                    const accruals = Math.round((last.expenses ?? 0) * 0.1);
-                    const debt = Math.round(totalAssets * 0.15);
+                    // Convert series (base NGN) to reporting currency for consistency
+                    const toRpt = (v: number) => fxConvert(v, 'NGN', reportingCurrency);
+                    const cash = toRpt(last.cash ?? 0);
+                    const assets = Math.max(0, toRpt(Math.round((last.revenue ?? 0) * 0.3))); // AR proxy
+                    const inventory = toRpt(Math.round((last.cogs ?? 0) * 0.2));
+                    const totalAssets = cash + assets + inventory;
+                    const ap = toRpt(Math.round((last.cogs ?? 0) * 0.1));
+                    const accruals = toRpt(Math.round((last.expenses ?? 0) * 0.1));
+                    const debt = toRpt(Math.round(totalAssets * 0.15));
                     const totalLiabilities = ap + accruals + debt;
                     const equity = totalAssets - totalLiabilities;
                     setRows([
-                        { key: 'cash', label: 'Cash & Cash Equivalents', amount: last.cash ?? 0 },
+                        { key: 'cash', label: 'Cash & Cash Equivalents', amount: cash },
                         { key: 'ar', label: 'Accounts Receivable', amount: assets },
                         { key: 'inv', label: 'Inventory', amount: inventory },
                         { key: 'ta', label: 'Total Assets', amount: totalAssets },
@@ -74,12 +81,84 @@ export default function BalanceSheetTable() {
                         { key: 'eq', label: 'Equity', amount: equity },
                     ]);
                 } else {
-                    setRows([]);
+                    // Final fallback: compute from TB + CoA
+                    const companies = consolidated && selectedCompanyIds.length > 0 ? selectedCompanyIds : [company || 'lagos-ng'];
+                    accountingRepository.seedDemo();
+                    const convertToRpt = (amt: number, from: string) => fxConvert(amt, from, reportingCurrency);
+                    const totals = { cash: 0, ar: 0, inv: 0, ap: 0, accr: 0, debt: 0, equity: 0 };
+                    companies.forEach(cid => {
+                        const tbs = accountingRepository.listTB(cid).sort((a,b)=>a.periodEnd.localeCompare(b.periodEnd));
+                        const tb = tbs[tbs.length - 1];
+                        const coa = accountingRepository.listCoA(cid);
+                        if (!tb || coa.length === 0) return;
+                        const cur = (code: string) => tb.entries.filter(x => x.accountCode === code).reduce((s,x)=> s + (x.debit - x.credit), 0);
+                        const curr = coa[0]?.currency || 'NGN';
+                        totals.cash += Math.max(0, convertToRpt(cur('1000'), curr));
+                        totals.ar += Math.max(0, convertToRpt(cur('1100'), curr));
+                        totals.inv += Math.max(0, convertToRpt(cur('1200'), curr));
+                        totals.ap += Math.max(0, -convertToRpt(cur('2000'), curr));
+                        totals.debt += Math.max(0, -convertToRpt(cur('2100'), curr) - convertToRpt(cur('2500'), curr));
+                        totals.equity += Math.max(0, -convertToRpt(cur('3000'), curr) - convertToRpt(cur('3100'), curr));
+                        // accruals unknown; estimate 0
+                    });
+                    const totalAssets = totals.cash + totals.ar + totals.inv;
+                    const totalLiabilities = totals.ap + totals.accr + totals.debt;
+                    const equity = totals.equity || Math.max(0, totalAssets - totalLiabilities);
+                    setRows([
+                        { key: 'cash', label: 'Cash & Cash Equivalents', amount: totals.cash },
+                        { key: 'ar', label: 'Accounts Receivable', amount: totals.ar },
+                        { key: 'inv', label: 'Inventory', amount: totals.inv },
+                        { key: 'ta', label: 'Total Assets', amount: totalAssets },
+                        { key: 'ap', label: 'Accounts Payable', amount: -totals.ap },
+                        { key: 'debt', label: 'Debt', amount: -totals.debt },
+                        { key: 'tl', label: 'Total Liabilities', amount: -totalLiabilities },
+                        { key: 'eq', label: 'Equity', amount: equity },
+                    ]);
                 }
-            } catch (e: any) { if (alive) setError(e?.message ?? 'Failed to load'); } finally { if (alive) setLoading(false); }
+            } catch (e: any) {
+                if (alive) {
+                    // TB+CoA fallback when API fails entirely
+                    try {
+                        const companies = consolidated && selectedCompanyIds.length > 0 ? selectedCompanyIds : [company || 'lagos-ng'];
+                        accountingRepository.seedDemo();
+                        const convertToRpt = (amt: number, from: string) => fxConvert(amt, from, reportingCurrency);
+                        const totals = { cash: 0, ar: 0, inv: 0, ap: 0, accr: 0, debt: 0, equity: 0 };
+                        companies.forEach(cid => {
+                            const tbs = accountingRepository.listTB(cid).sort((a,b)=>a.periodEnd.localeCompare(b.periodEnd));
+                            const tb = tbs[tbs.length - 1];
+                            const coa = accountingRepository.listCoA(cid);
+                            if (!tb || coa.length === 0) return;
+                            const curr = coa[0]?.currency || 'NGN';
+                            const cur = (code: string) => tb.entries.filter(x => x.accountCode === code).reduce((s,x)=> s + (x.debit - x.credit), 0);
+                            totals.cash += Math.max(0, convertToRpt(cur('1000'), curr));
+                            totals.ar += Math.max(0, convertToRpt(cur('1100'), curr));
+                            totals.inv += Math.max(0, convertToRpt(cur('1200'), curr));
+                            totals.ap += Math.max(0, -convertToRpt(cur('2000'), curr));
+                            totals.debt += Math.max(0, -convertToRpt(cur('2100'), curr) - convertToRpt(cur('2500'), curr));
+                            totals.equity += Math.max(0, -convertToRpt(cur('3000'), curr) - convertToRpt(cur('3100'), curr));
+                        });
+                        const totalAssets = totals.cash + totals.ar + totals.inv;
+                        const totalLiabilities = totals.ap + totals.accr + totals.debt;
+                        const equity = totals.equity || Math.max(0, totalAssets - totalLiabilities);
+                        setRows([
+                            { key: 'cash', label: 'Cash & Cash Equivalents', amount: totals.cash },
+                            { key: 'ar', label: 'Accounts Receivable', amount: totals.ar },
+                            { key: 'inv', label: 'Inventory', amount: totals.inv },
+                            { key: 'ta', label: 'Total Assets', amount: totalAssets },
+                            { key: 'ap', label: 'Accounts Payable', amount: -totals.ap },
+                            { key: 'debt', label: 'Debt', amount: -totals.debt },
+                            { key: 'tl', label: 'Total Liabilities', amount: -totalLiabilities },
+                            { key: 'eq', label: 'Equity', amount: equity },
+                        ]);
+                        setError(null);
+                    } catch (err2) {
+                        setError(e?.message ?? 'Failed to load');
+                    }
+                }
+            } finally { if (alive) setLoading(false); }
         })();
         return () => { alive = false; };
-    }, [api, queryParams]);
+    }, [api, queryParams, fxConvert, consolidated, selectedCompanyIds, company, reportingCurrency]);
 
     function exportCsv() {
         const headers = ['line', 'label', 'amount'];

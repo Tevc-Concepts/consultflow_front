@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-type TemplateKind = 'transactions' | 'invoices' | 'payroll';
+type TemplateKind = 'transactions' | 'invoices' | 'payroll' | 'coa' | 'trial_balance';
 
 export interface CSVTemplateDownloadProps {
     className?: string;
@@ -35,6 +35,8 @@ export default function CSVTemplateDownload({ className }: CSVTemplateDownloadPr
                 <option value="transactions">Transactions</option>
                 <option value="invoices">Invoices</option>
                 <option value="payroll">Payroll</option>
+                <option value="coa">Chart of Accounts</option>
+                <option value="trial_balance">Trial Balance</option>
             </select>
             <button
                 onClick={onDownload}

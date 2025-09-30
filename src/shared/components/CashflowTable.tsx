@@ -5,6 +5,8 @@ import Card from '@components/ui/Card';
 import Button from '@components/ui/Button';
 import getApi from '@shared/api/client';
 import { useAppStore, type AppState, convertAmount, formatCurrency } from '@shared/state/app';
+import { useFxRates } from '@shared/hooks/useFx';
+import { accountingRepository, computePLFromTB } from '@shared/repositories/accountingRepository';
 
 type ReportsResp = {
     series: Array<{ date: string; revenue: number; cogs?: number; expenses: number; cash?: number }>;
@@ -31,7 +33,8 @@ export default function CashflowTable() {
     const [rows, setRows] = React.useState<Row[]>([]);
 
     const [fxLast, setFxLast] = React.useState<{ month: string; usd: number; cfa: number } | null>(null);
-    const fmt = React.useCallback((n: number) => formatCurrency(convertAmount(n, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined), reportingCurrency), [reportingCurrency, fxLast]);
+    const { convert: fxConvert } = useFxRates();
+    const fmt = React.useCallback((n: number) => formatCurrency(n, reportingCurrency), [reportingCurrency]);
 
     React.useEffect(() => {
         let alive = true;
@@ -48,14 +51,32 @@ export default function CashflowTable() {
                 if (cf?.lines?.length) {
                     setRows(cf.lines);
                 } else {
-                    // Fallback compute from series
-                    const rev = series.reduce((s, p) => s + (p.revenue ?? 0), 0);
-                    const cogs = series.reduce((s, p) => s + (p.cogs ?? Math.round((p.revenue ?? 0) * 0.45)), 0);
-                    const opex = series.reduce((s, p) => s + (p.expenses ?? 0), 0);
-                    const netIncome = (rev - cogs) - opex;
-                    const operating = netIncome + Math.round(cogs * 0.1) - Math.round(rev * 0.05);
-                    const investing = -Math.round(rev * 0.08);
-                    const financing = Math.round(rev * 0.03) - Math.round(rev * 0.02);
+                    // Fallback compute from TB + CoA (approximate)
+                    accountingRepository.seedDemo();
+                    const companies = (consolidated && selectedCompanyIds.length > 0) ? selectedCompanyIds : ['lagos-ng'];
+                    let operating = 0; let investing = 0; let financing = 0;
+                    companies.forEach(cid => {
+                        const tbs = accountingRepository.listTB(cid).sort((a,b)=>a.periodEnd.localeCompare(b.periodEnd));
+                        const tb = tbs[tbs.length - 1];
+                        const prev = tbs[tbs.length - 2];
+                        const coa = accountingRepository.listCoA(cid);
+                        if (tb && coa.length) {
+                            const pl = computePLFromTB(coa, tb);
+                            // ΔWorking capital: AR(1100) + INV(1200) - AP(2000)
+                            const bal = (source: any, code: string) => (source?.entries || []).filter((x: any) => x.accountCode === code).reduce((s: number, x: any) => s + (x.debit - x.credit), 0);
+                            const curr = coa[0]?.currency || 'NGN';
+                            const curAR = fxConvert(bal(tb, '1100'), curr, reportingCurrency);
+                            const curINV = fxConvert(bal(tb, '1200'), curr, reportingCurrency);
+                            const curAP = -fxConvert(bal(tb, '2000'), curr, reportingCurrency);
+                            const prevAR = fxConvert(bal(prev, '1100'), curr, reportingCurrency);
+                            const prevINV = fxConvert(bal(prev, '1200'), curr, reportingCurrency);
+                            const prevAP = -fxConvert(bal(prev, '2000'), curr, reportingCurrency);
+                            const dWC = (curAR - prevAR) + (curINV - prevINV) - (curAP - prevAP);
+                            // netIncome is in company currency; convert it
+                            const ni = fxConvert(pl.netIncome, curr, reportingCurrency);
+                            operating += (ni - dWC);
+                        }
+                    });
                     const netChange = operating + investing + financing;
                     setRows([
                         { key: 'op', label: 'Net Cash from Operating Activities', amount: operating },
@@ -64,10 +85,49 @@ export default function CashflowTable() {
                         { key: 'net', label: 'Net Change in Cash', amount: netChange },
                     ]);
                 }
-            } catch (e: any) { if (alive) setError(e?.message ?? 'Failed to load'); } finally { if (alive) setLoading(false); }
+            } catch (e: any) {
+                if (alive) {
+                    // Final fallback TB + CoA
+                    try {
+                        accountingRepository.seedDemo();
+                        const companies = (consolidated && selectedCompanyIds.length > 0) ? selectedCompanyIds : ['lagos-ng'];
+                        let operating = 0; let investing = 0; let financing = 0;
+                        companies.forEach(cid => {
+                            const tbs = accountingRepository.listTB(cid).sort((a,b)=>a.periodEnd.localeCompare(b.periodEnd));
+                            const tb = tbs[tbs.length - 1];
+                            const prev = tbs[tbs.length - 2];
+                            const coa = accountingRepository.listCoA(cid);
+                            if (tb && coa.length) {
+                                const pl = computePLFromTB(coa, tb);
+                                const bal = (source: any, code: string) => (source?.entries || []).filter((x: any) => x.accountCode === code).reduce((s: number, x: any) => s + (x.debit - x.credit), 0);
+                                const curr = coa[0]?.currency || 'NGN';
+                                const curAR = fxConvert(bal(tb, '1100'), curr, reportingCurrency);
+                                const curINV = fxConvert(bal(tb, '1200'), curr, reportingCurrency);
+                                const curAP = -fxConvert(bal(tb, '2000'), curr, reportingCurrency);
+                                const prevAR = fxConvert(bal(prev, '1100'), curr, reportingCurrency);
+                                const prevINV = fxConvert(bal(prev, '1200'), curr, reportingCurrency);
+                                const prevAP = -fxConvert(bal(prev, '2000'), curr, reportingCurrency);
+                                const dWC = (curAR - prevAR) + (curINV - prevINV) - (curAP - prevAP);
+                                const ni = fxConvert(pl.netIncome, curr, reportingCurrency);
+                                operating += (ni - dWC);
+                            }
+                        });
+                        const netChange = operating + investing + financing;
+                        setRows([
+                            { key: 'op', label: 'Net Cash from Operating Activities', amount: operating },
+                            { key: 'inv', label: 'Net Cash from Investing Activities', amount: investing },
+                            { key: 'fin', label: 'Net Cash from Financing Activities', amount: financing },
+                            { key: 'net', label: 'Net Change in Cash', amount: netChange },
+                        ]);
+                        setError(null);
+                    } catch (err2) {
+                        setError(e?.message ?? 'Failed to load');
+                    }
+                }
+            } finally { if (alive) setLoading(false); }
         })();
         return () => { alive = false; };
-    }, [api, company, consolidated, selectedCompanyIds, range, from, to, reportingCurrency]);
+    }, [api, company, consolidated, selectedCompanyIds, range, from, to, reportingCurrency, fxConvert]);
 
     function exportCsv() {
         const headers = ['line', 'label', 'amount'];

@@ -10,7 +10,9 @@ import Skeleton from '@shared/components/Skeleton';
 import AIWidget from '@shared/components/AIWidget';
 import AnalyticsDashboard from '@features/analytics/AnalyticsDashboard';
 import RechartsLineChart from '@shared/components/LineChart';
-import { useAppStore, type AppState, convertAmount, formatCurrency } from '@shared/state/app';
+import { useAppStore, type AppState, formatCurrency } from '@shared/state/app';
+import { useFxRates } from '@shared/hooks/useFx';
+import FxBadge from '@shared/components/FxBadge';
 import { useAuthStore } from '@features/auth/store';
 
 type KPIKey = 'revenue' | 'grossProfit' | 'netIncome' | 'cashBalance' | 'burnRate';
@@ -125,13 +127,15 @@ export default function DashboardPage() {
         return ex[ex.length - 1];
     }, [data]);
 
-    const fmt = React.useCallback((n: number) => formatCurrency(convertAmount(n, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined), reportingCurrency), [reportingCurrency, fxLast]);
+    const { convert: fxConvert } = useFxRates();
+    const fmt = React.useCallback((n: number) => formatCurrency(n, reportingCurrency), [reportingCurrency]);
 
     return (
         <ProtectedRoute requiredRole="consultant">
             <div className="container py-6 space-y-4" data-testid="dashboard-container">
             {/* Navigation Tabs */}
-            <div className="flex space-x-1 bg-medium/30 rounded-xl p-1 mb-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-medium/30 rounded-xl p-1 mb-6">
+                <div className="flex">
                 <button
                     onClick={() => setActiveTab('kpis')}
                     className={[
@@ -154,6 +158,8 @@ export default function DashboardPage() {
                 >
                     🧠 Advanced Analytics
                 </button>
+                </div>
+                <FxBadge showRefresh />
             </div>
 
             {/* KPI Overview Tab */}
@@ -285,8 +291,8 @@ export default function DashboardPage() {
                         <RechartsLineChart 
                             data={(data?.series ?? []).map(p => ({
                                 date: p.date,
-                                revenue: Number(convertAmount(p.revenue, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined).toFixed(0)),
-                                expenses: Number(convertAmount(p.expenses, reportingCurrency, fxLast ? { month: fxLast.month, NGN_USD: fxLast.usd, NGN_CFA: fxLast.cfa } : undefined).toFixed(0))
+                                revenue: Math.round(fxConvert(p.revenue, 'NGN', reportingCurrency)),
+                                expenses: Math.round(fxConvert(p.expenses, 'NGN', reportingCurrency))
                             }))}
                             lines={[
                                 { dataKey: 'revenue', stroke: '#2774FF', name: 'Revenue' },

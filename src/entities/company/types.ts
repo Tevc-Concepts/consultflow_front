@@ -4,7 +4,7 @@ export interface Company {
     legal_name: string;
     registration_number: string;
     tax_id: string;
-    currency: 'NGN' | 'USD' | 'CFA';
+    currency: 'NGN' | 'USD' | 'CFA' | 'KES' | 'ZAR' | 'GHS' | 'MAD';
     fiscal_year_end: string; // MM-DD format
     industry: string;
     country: string;
@@ -14,6 +14,10 @@ export interface Company {
     created_at: string;
     updated_at: string;
     is_active: boolean;
+    // Accounting relations (LocalStorage demo; API-ready)
+    chartOfAccounts?: string[]; // [chartOfAccountIds]
+    trialBalances?: string[];   // [trialBalanceIds]
+    taxTemplates?: string[];    // [taxTemplateIds]
 }
 
 export interface CompanyAddress {

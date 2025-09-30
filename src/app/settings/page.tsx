@@ -7,6 +7,7 @@ import DemoSwitch from '@shared/components/DemoSwitch';
 import { useAppStore, type Currency, type AppState } from '@shared/state/app';
 import OutboxPanel from '@shared/components/OutboxPanel';
 import getApi from '@shared/api/client';
+import { loadFxCacheMeta } from '@shared/utils/fx';
 
 interface CompanyData {
     id: string;
@@ -45,11 +46,17 @@ export default function SettingsPage() {
     const [loadingRates, setLoadingRates] = React.useState(false);
     const [editingRate, setEditingRate] = React.useState<string | null>(null);
     const [tempRates, setTempRates] = React.useState<any>({});
+    const [fxUpdated, setFxUpdated] = React.useState<string>('');
 
     // Load companies on mount
     React.useEffect(() => {
         loadCompanies();
         loadExchangeRates();
+        const meta = loadFxCacheMeta();
+        if (meta?.at) {
+            const d = new Date(meta.at);
+            setFxUpdated(d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+        }
     }, []);
 
     const loadCompanies = async () => {
@@ -193,8 +200,14 @@ export default function SettingsPage() {
                         {loadingRates ? 'Loading...' : 'Refresh'}
                     </Button>
                 </div>
-                <div className="text-xs text-deep-navy/70 mb-3">
-                    Exchange rates used for multi-currency reporting and consolidation
+                <div className="text-xs text-deep-navy/70 mb-3 flex items-center justify-between">
+                    <span>Exchange rates used for multi-currency reporting and consolidation</span>
+                    {fxUpdated && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-medium/50 px-2 py-0.5 bg-medium/20">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald" aria-hidden />
+                            Last FX: {fxUpdated}
+                        </span>
+                    )}
                 </div>
                 
                 {loadingRates ? (

@@ -142,7 +142,7 @@ export function useBuilderState() {
 
     const getCurrentSlide = useCallback((): Slide | null => {
         return state.slides.find(s => s.id === state.current) || null;
-    }, [state.slides, state.current]);
+    }, [state]);
 
     const getSelectedBlock = useCallback((): Block | null => {
         if (!state.selectedBlock) return null;
@@ -151,7 +151,7 @@ export function useBuilderState() {
             if (block) return block;
         }
         return null;
-    }, [state.slides, state.selectedBlock]);
+    }, [state]);
 
     return {
         state,
