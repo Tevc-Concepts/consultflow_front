@@ -7,8 +7,9 @@ import { useParams } from 'next/navigation';
 import { accountingRepository } from '@shared/repositories/accountingRepository';
 import { parseTBFromExcel, parseTBFromCsv } from '@shared/utils/uploadParsers';
 import type { ChartOfAccount } from '@entities/accounting/types';
-import type { TrialBalance, TrialBalanceEntry } from '@entities/accounting/types';
+import type { TrialBalance, TrialBalanceEntry, TrialBalanceAdjustment } from '@entities/accounting/types';
 import CSVTemplateDownload from '@shared/components/CSVTemplateDownload';
+import AdjustmentModal from '@shared/components/AdjustmentModal';
 
 function fuzzyMatch(query: string, choices: { code: string; name: string }[]): string | '' {
   const q = query.toLowerCase();
@@ -36,6 +37,12 @@ export default function TrialBalancePage() {
   const [periodStart, setPeriodStart] = React.useState('');
   const [periodEnd, setPeriodEnd] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<'all' | TrialBalance['status']>('all');
+  const [showAdjModal, setShowAdjModal] = React.useState(false);
+  const [activeTBForAdj, setActiveTBForAdj] = React.useState<TrialBalance | null>(null);
+  const [undoStack, setUndoStack] = React.useState<any[]>([]);
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const [editingAdj, setEditingAdj] = React.useState<TrialBalanceAdjustment | null>(null);
+  const [fxFallbackUsed, setFxFallbackUsed] = React.useState(false);
 
   React.useEffect(() => {
     accountingRepository.seedDemo();
@@ -75,15 +82,70 @@ export default function TrialBalancePage() {
     if (!periodStart || !periodEnd || entries.length === 0) return;
     const now = new Date().toISOString();
     // Apply mapping (fallback to original if not provided)
-    const mappedEntries: TrialBalanceEntry[] = entries.map(e => ({ ...e, accountCode: mapping[e.accountCode] || e.accountCode }));
+    const baseCurrency = coa[0]?.currency;
+    let fallback = false;
+    const parentCodes = new Set(coa.filter(a => coa.some(c => c.parentAccountId === a.id)).map(a => a.accountCode));
+    const mappedEntries: TrialBalanceEntry[] = entries.map(e => {
+      const accountCode = mapping[e.accountCode] || e.accountCode;
+      if (e.currency && baseCurrency && e.currency !== baseCurrency) {
+        const rateRec = accountingRepository.findRate(companyId, e.currency as any, periodEnd || periodStart);
+        const rate = rateRec?.rate || 1;
+        if (!rateRec) fallback = true;
+        return { ...e, accountCode, originalDebit: e.debit, originalCredit: e.credit, fxRateToBase: rate, debit: Math.round(e.debit * rate * 100)/100, credit: Math.round(e.credit * rate * 100)/100, currency: baseCurrency };
+      }
+      return { ...e, accountCode };
+    });
+    setFxFallbackUsed(fallback);
     // Save user mapping preferences for next time
     const learned: Record<string, string> = {};
     mappedEntries.forEach(e => { if (mapping[e.accountCode]) learned[e.accountCode] = mapping[e.accountCode]; });
     accountingRepository.saveMapping(companyId, learned);
-    const tb: TrialBalance = { id: `${companyId}-tb-${periodStart}-${Date.now()}`, companyId, periodStart, periodEnd, entries: mappedEntries, uploadedBy: 'consultant-1', uploadedAt: now, status: 'pending_approval' };
+    // filter zero and parent account postings
+    const filtered = mappedEntries.filter(e => (e.debit !== 0 || e.credit !== 0) && !parentCodes.has(e.accountCode));
+    if (filtered.length !== mappedEntries.length) {
+      alert('Removed zero-amount or parent-account lines.');
+    }
+    const tb: TrialBalance = { id: `${companyId}-tb-${periodStart}-${Date.now()}`, companyId, periodStart, periodEnd, entries: filtered, uploadedBy: 'consultant-1', uploadedAt: now, status: 'draft', currency: baseCurrency };
     accountingRepository.addTB(companyId, tb);
     setTbs(accountingRepository.listTB(companyId));
     setEntries([]);
+  };
+
+  const openAdjModal = (tb: TrialBalance) => { setActiveTBForAdj(tb); setShowAdjModal(true); };
+  const handleSaveAdjustment = (payload: Omit<TrialBalanceAdjustment, 'id' | 'createdAt'>) => {
+    if (!activeTBForAdj) return;
+    const now = new Date().toISOString();
+    if (editingAdj) {
+      // replace existing
+      accountingRepository.deleteTBAdjustment(companyId, activeTBForAdj.id, editingAdj.id);
+    }
+    const adj: TrialBalanceAdjustment = { id: editingAdj ? editingAdj.id : `adj-${Date.now()}`, createdAt: editingAdj ? editingAdj.createdAt : now, ...payload, tbId: activeTBForAdj.id } as TrialBalanceAdjustment;
+    accountingRepository.addTBAdjustment(companyId, activeTBForAdj.id, adj);
+    setUndoStack(stack => [...stack, { type: editingAdj ? 'editAdjustment' : 'addAdjustment', tbId: activeTBForAdj.id, adjId: adj.id, prev: editingAdj }]);
+    setEditingAdj(null);
+    setTbs(accountingRepository.listTB(companyId));
+    setShowAdjModal(false);
+  };
+  const undoLast = () => {
+    const last = undoStack.pop(); if (!last) return;
+    if (last.type === 'addAdjustment') {
+      accountingRepository.deleteTBAdjustment(companyId, last.tbId, last.adjId);
+      setTbs(accountingRepository.listTB(companyId));
+    } else if (last.type === 'editAdjustment') {
+      // revert to previous version
+      if (last.prev) {
+        accountingRepository.deleteTBAdjustment(companyId, last.tbId, last.adjId);
+        accountingRepository.addTBAdjustment(companyId, last.tbId, last.prev);
+        setTbs(accountingRepository.listTB(companyId));
+      }
+    } else if (last.type === 'deleteAdjustment') {
+      // re-add deleted adjustment
+      if (last.deleted) {
+        accountingRepository.addTBAdjustment(companyId, last.tbId, last.deleted);
+        setTbs(accountingRepository.listTB(companyId));
+      }
+    }
+    setUndoStack([...undoStack]);
   };
 
   const filtered = tbs.filter(t => statusFilter === 'all' ? true : t.status === statusFilter);
@@ -93,6 +155,11 @@ export default function TrialBalancePage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Trial Balance Upload & Mapping</h1>
+      {fxFallbackUsed && (
+        <div className="rounded-lg bg-coral/10 border border-coral/40 px-4 py-2 text-xs text-coral">
+          One or more foreign currency lines used a fallback FX rate of 1.0 (missing configured rate). Please add proper exchange rates.
+        </div>
+      )}
       <Card>
         <div className="grid sm:grid-cols-2 gap-3 items-center">
           <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="text-sm" />
@@ -145,8 +212,22 @@ export default function TrialBalancePage() {
                         <div className="text-[10px] text-coral">Unresolved mapping</div>
                       )}
                     </td>
-                    <td className="text-right">{e.debit?.toLocaleString()}</td>
-                    <td className="text-right">{e.credit?.toLocaleString()}</td>
+                    <td className="text-right">
+                      <input
+                        type="number"
+                        value={e.debit}
+                        onChange={(ev) => setEntries(prev => prev.map((row, idx) => idx === i ? { ...row, debit: Number(ev.target.value) } : row))}
+                        className="w-28 text-right border rounded px-1 py-0.5 text-xs"
+                      />
+                    </td>
+                    <td className="text-right">
+                      <input
+                        type="number"
+                        value={e.credit}
+                        onChange={(ev) => setEntries(prev => prev.map((row, idx) => idx === i ? { ...row, credit: Number(ev.target.value) } : row))}
+                        className="w-28 text-right border rounded px-1 py-0.5 text-xs"
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -177,25 +258,98 @@ export default function TrialBalancePage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(tb => (
-                <tr key={tb.id} className="border-b last:border-0">
-                  <td className="py-2">{tb.periodStart} → {tb.periodEnd}</td>
-                  <td>{tb.status}</td>
-                  <td className="text-right">{tb.entries.length}</td>
-                  <td className="text-right">
-                    {tb.status !== 'locked' && (
+              {filtered.map(tb => {
+                const totals = accountingRepository.computeAdjustedTotals ? accountingRepository.computeAdjustedTotals(tb) : { netDebit: 0, netCredit: 0, originalDebit: 0, originalCredit: 0, adjDebit: 0, adjCredit: 0 } as any;
+                const balanced = Math.abs(totals.netDebit - totals.netCredit) < 1e-2;
+                return (
+                  <React.Fragment key={tb.id}>
+                  <tr className="border-b last:border-0 cursor-pointer" onClick={() => setExpanded(expanded === tb.id ? null : tb.id)}>
+                    <td className="py-2">{tb.periodStart} → {tb.periodEnd}<div className="text-[10px] text-deep-navy/60">{totals.netDebit.toLocaleString()} / {totals.netCredit.toLocaleString()} {balanced ? '✓' : '⚠︎'}</div></td>
+                    <td>
+                      {tb.status}
+                      {tb.adjustments && tb.adjustments.length > 0 && (
+                        <div className="text-[10px] text-deep-navy/60">{tb.adjustments.length} adj.</div>
+                      )}
+                    </td>
+                    <td className="text-right">{tb.entries.length}</td>
+                    <td className="text-right">
+                    {tb.status === 'draft' && (
+                      <Button size="sm" variant="ghost" onClick={() => { accountingRepository.updateTBStatus(companyId, tb.id, 'pending_approval'); setTbs(accountingRepository.listTB(companyId)); }}>Submit</Button>
+                    )}
+                    {tb.status === 'pending_approval' && (
                       <Button size="sm" variant="ghost" onClick={() => { accountingRepository.updateTBStatus(companyId, tb.id, 'approved'); setTbs(accountingRepository.listTB(companyId)); }}>Approve</Button>
                     )}
                     {tb.status === 'approved' && (
                       <Button size="sm" variant="ghost" onClick={() => { accountingRepository.updateTBStatus(companyId, tb.id, 'locked'); setTbs(accountingRepository.listTB(companyId)); }}>Lock</Button>
                     )}
-                  </td>
-                </tr>
-              ))}
+                    {(tb.status === 'draft' || tb.status === 'pending_approval') && (
+                      <Button size="sm" variant="ghost" onClick={() => openAdjModal(tb)}>Adj</Button>
+                    )}
+                    </td>
+                  </tr>
+                  {expanded === tb.id && (
+                    <tr className="bg-deep-navy/5">
+                      <td colSpan={4} className="p-3">
+                        <div className="text-xs font-medium mb-2 flex items-center">Adjustments
+                          {(tb.status === 'draft' || tb.status === 'pending_approval') && (
+                            <Button size="sm" variant="ghost" className="ml-2" onClick={(e) => { e.stopPropagation(); openAdjModal(tb); }}>Add</Button>
+                          )}
+                        </div>
+                        <table className="w-full text-[11px]">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-1">Account</th>
+                              <th className="text-right">Debit</th>
+                              <th className="text-right">Credit</th>
+                              <th className="text-left">Reason</th>
+                              <th className="text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(tb.adjustments || []).map(a => (
+                              <tr key={a.id} className="border-b last:border-0">
+                                <td className="py-1">{a.accountCode}</td>
+                                <td className="text-right">{a.debit.toLocaleString()}</td>
+                                <td className="text-right">{a.credit.toLocaleString()}</td>
+                                <td>{a.reason}</td>
+                                <td className="text-right">
+                                  {(tb.status === 'draft' || tb.status === 'pending_approval') && (
+                                    <>
+                                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingAdj(a); setActiveTBForAdj(tb); setShowAdjModal(true); }}>Edit</Button>
+                                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); accountingRepository.deleteTBAdjustment(companyId, tb.id, a.id); setUndoStack(st => [...st, { type: 'deleteAdjustment', tbId: tb.id, adjId: a.id, deleted: a }]); setTbs(accountingRepository.listTB(companyId)); }}>Del</Button>
+                                    </>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                            {(tb.adjustments || []).length === 0 && (
+                              <tr><td colSpan={5} className="text-center py-2 text-deep-navy/50">No adjustments</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
+        <div className="flex justify-end mt-2 gap-2">
+          <Button size="sm" variant="ghost" disabled={undoStack.length === 0} onClick={undoLast}>Undo</Button>
+        </div>
       </Card>
+      {showAdjModal && activeTBForAdj && (
+        <AdjustmentModal
+          open={showAdjModal}
+          onClose={() => { setShowAdjModal(false); setEditingAdj(null); }}
+          onSave={handleSaveAdjustment}
+          coa={coa}
+          baseCurrency={coa[0]?.currency || 'NGN'}
+          editing={editingAdj}
+        />
+      )}
     </div>
   );
 }

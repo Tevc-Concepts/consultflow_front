@@ -1,4 +1,4 @@
-import { ChartOfAccount, TrialBalance, TaxTemplate, TrialBalanceEntry, CurrencyCode, AccountType } from '@entities/accounting/types';
+import { ChartOfAccount, TrialBalance, TaxTemplate, TrialBalanceEntry, CurrencyCode, TrialBalanceAdjustment, ExchangeRate, AuditEvent, JournalTransaction } from '@entities/accounting/types';
 
 // LocalStorage keys
 const KEYS = {
@@ -6,13 +6,19 @@ const KEYS = {
   TB: 'consultflow:accounting:tb:v1',
   TAX: 'consultflow:accounting:tax:v1',
   META: 'consultflow:accounting:meta:v1', // to map company relations
-  MAP: 'consultflow:accounting:mapping:v1' // per-company saved mapping preferences
+  MAP: 'consultflow:accounting:mapping:v1', // per-company saved mapping preferences
+  FX: 'consultflow:accounting:fx:v1',
+  AUDIT: 'consultflow:accounting:audit:v1',
+  TXN: 'consultflow:accounting:txn:v1'
 } as const;
 
 type CoAMap = Record<string, ChartOfAccount[]>; // companyId -> CoA array
 type TBMap = Record<string, TrialBalance[]>;    // companyId -> TB array
 type TaxMap = Record<string, TaxTemplate[]>;    // companyId -> Tax templates
 type MetaMap = Record<string, { chartOfAccounts?: string[]; trialBalances?: string[]; taxTemplates?: string[] }>; // companyId -> ids
+type FxMap = Record<string, ExchangeRate[]>; // companyId -> rates
+type AuditMap = Record<string, AuditEvent[]>; // companyId -> events
+type TxnMap = Record<string, JournalTransaction[]>; // companyId -> transactions
 
 function readLS<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -106,6 +112,57 @@ export class AccountingRepository {
   updateTBStatus(companyId: string, tbId: string, status: TrialBalance['status']) {
     const data = readLS<TBMap>(KEYS.TB, {}); const arr = data[companyId] || []; const idx = arr.findIndex(t => t.id === tbId); if (idx >= 0) { arr[idx].status = status; writeLS(KEYS.TB, data); }
   }
+  updateTBEntries(companyId: string, tbId: string, entries: TrialBalanceEntry[]) {
+    const data = readLS<TBMap>(KEYS.TB, {}); const arr = data[companyId] || []; const idx = arr.findIndex(t => t.id === tbId);
+    if (idx >= 0 && arr[idx].status !== 'locked') { arr[idx].entries = entries; writeLS(KEYS.TB, data); }
+  }
+  addTBAdjustment(companyId: string, tbId: string, adj: TrialBalanceAdjustment) {
+    const data = readLS<TBMap>(KEYS.TB, {}); const arr = data[companyId] || []; const tb = arr.find(t => t.id === tbId);
+    if (tb && (tb.status === 'draft' || tb.status === 'pending_approval')) {
+      tb.adjustments = tb.adjustments || [];
+      tb.adjustments.push(adj);
+      writeLS(KEYS.TB, data);
+      this.logAudit(companyId, { id: `audit-${Date.now()}`, entity: 'adjustment', entityId: adj.id, action: 'create', timestamp: new Date().toISOString(), userId: adj.createdBy, meta: { tbId } });
+    }
+  }
+  deleteTBAdjustment(companyId: string, tbId: string, adjId: string) {
+    const data = readLS<TBMap>(KEYS.TB, {}); const arr = data[companyId] || []; const tb = arr.find(t => t.id === tbId);
+    if (tb && tb.status !== 'locked' && tb.adjustments) {
+      tb.adjustments = tb.adjustments.filter(a => a.id !== adjId);
+      writeLS(KEYS.TB, data);
+      this.logAudit(companyId, { id: `audit-${Date.now()}`, entity: 'adjustment', entityId: adjId, action: 'delete', timestamp: new Date().toISOString(), userId: 'system' });
+    }
+  }
+  computeAdjustedTotals(tb: TrialBalance) {
+    const base = tb.entries.reduce((acc, e) => { acc.debit += e.debit; acc.credit += e.credit; return acc; }, { debit: 0, credit: 0 });
+    const adjs = (tb.adjustments || []).reduce((acc, a) => { acc.debit += a.debit; acc.credit += a.credit; return acc; }, { debit: 0, credit: 0 });
+    return { originalDebit: base.debit, originalCredit: base.credit, adjDebit: adjs.debit, adjCredit: adjs.credit, netDebit: base.debit + adjs.debit, netCredit: base.credit + adjs.credit };
+  }
+
+  // Transactions
+  listTransactions(companyId: string): JournalTransaction[] { return readLS<TxnMap>(KEYS.TXN, {})[companyId] || []; }
+  addTransactions(companyId: string, txns: JournalTransaction[]) {
+    const data = readLS<TxnMap>(KEYS.TXN, {}); data[companyId] = [...(data[companyId] || []), ...txns]; writeLS(KEYS.TXN, data);
+    txns.forEach(t => this.logAudit(companyId, { id: `audit-${Date.now()}-${t.id}`, entity: 'transaction', entityId: t.id, action: 'create', timestamp: new Date().toISOString(), userId: t.createdBy }));
+  }
+
+  // FX
+  listExchangeRates(companyId: string): ExchangeRate[] { return readLS<FxMap>(KEYS.FX, {})[companyId] || []; }
+  upsertExchangeRate(companyId: string, rate: ExchangeRate) {
+    const data = readLS<FxMap>(KEYS.FX, {}); const arr = data[companyId] || []; const idx = arr.findIndex(r => r.id === rate.id); if (idx >= 0) arr[idx] = rate; else arr.push(rate); data[companyId] = arr; writeLS(KEYS.FX, data);
+  }
+  deleteExchangeRate(companyId: string, rateId: string) {
+    const data = readLS<FxMap>(KEYS.FX, {}); const arr = data[companyId] || []; data[companyId] = arr.filter(r => r.id !== rateId); writeLS(KEYS.FX, data);
+  }
+  findRate(companyId: string, target: CurrencyCode, date: string): ExchangeRate | undefined {
+    const arr = this.listExchangeRates(companyId); return arr.find(r => r.target === target && r.date === date);
+  }
+
+  // Audit
+  listAudit(companyId: string): AuditEvent[] { return readLS<AuditMap>(KEYS.AUDIT, {})[companyId] || []; }
+  logAudit(companyId: string, evt: AuditEvent) {
+    const data = readLS<AuditMap>(KEYS.AUDIT, {}); const arr = data[companyId] || []; arr.push(evt); data[companyId] = arr; writeLS(KEYS.AUDIT, data);
+  }
 
   // TAX
   listTaxTemplates(companyId: string): TaxTemplate[] { const data = readLS<TaxMap>(KEYS.TAX, {}); return data[companyId] || []; }
@@ -165,6 +222,15 @@ export class AccountingRepository {
       ];
       const tb: TrialBalance = { id: `${c.id}-tb-${start}`, companyId: c.id, periodStart: start, periodEnd: end, entries, uploadedBy: 'consultant-1', uploadedAt: now, status: 'approved' };
       this.addTB(c.id, tb);
+
+      // Seed a couple of FX rates (base is company currency itself + one other just for demo)
+      const fxDate = new Date().toISOString().slice(0,10);
+      const fxBase: ExchangeRate = { id: `${c.id}-${c.currency}-${c.currency}-${fxDate}` , base: c.currency as CurrencyCode, target: c.currency as CurrencyCode, date: fxDate, rate: 1, createdAt: now };
+      this.upsertExchangeRate(c.id, fxBase);
+      if (c.currency !== 'USD') {
+        const toUsd: ExchangeRate = { id: `${c.id}-${c.currency}-USD-${fxDate}`, base: c.currency as CurrencyCode, target: 'USD', date: fxDate, rate: 0.0012, createdAt: now } as any;
+        this.upsertExchangeRate(c.id, toUsd);
+      }
     });
 
     writeLS(KEYS.META + ':seeded', true as any);

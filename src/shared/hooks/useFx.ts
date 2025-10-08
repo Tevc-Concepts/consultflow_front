@@ -1,6 +1,7 @@
 import * as React from 'react';
 import getApi from '@shared/api/client';
 import { normalizeRates, convertCurrency, loadFxCache, saveFxCache, type FxPerUsd } from '@shared/utils/fx';
+import { lookupRate } from '@shared/utils/rateCache';
 
 export function useFxRates() {
   const [fx, setFx] = React.useState<FxPerUsd | null>(() => loadFxCache());
@@ -29,7 +30,13 @@ export function useFxRates() {
   }, []);
 
   const convert = React.useCallback((amount: number, from: string, to: string) => {
-    return convertCurrency(amount, from, to, fx || undefined);
+    // First try standard per-USD matrix
+    const primary = convertCurrency(amount, from, to, fx || undefined);
+    if (fx) return primary;
+    // Fallback: attempt per-company rate cache (assuming from is company base in most flows)
+    // NOTE: We don't know companyId here; caller contexts (TB uploads) use company base as FROM so identity already done above.
+    // We leave this as a stub extension point.
+    return primary;
   }, [fx]);
 
   // On mount, ensure we have fresh data (but keep cached immediately)

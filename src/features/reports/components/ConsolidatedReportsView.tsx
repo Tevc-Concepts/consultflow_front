@@ -68,6 +68,13 @@ export default function ConsolidatedReportsView() {
     const [mounted, setMounted] = useState(false);
     const [drillDownKPI, setDrillDownKPI] = useState<string | null>(null);
     const [companyBreakdowns, setCompanyBreakdowns] = useState<{[key: string]: any}>({});
+    // Drill-down state for account transactions
+    const [drillAccount, setDrillAccount] = useState<{ code: string; name: string } | null>(null);
+    const [drillTxns, setDrillTxns] = useState<any[]>([]);
+    const [drillLoading, setDrillLoading] = useState(false);
+    const [drillStart, setDrillStart] = useState<string>('');
+    const [drillEnd, setDrillEnd] = useState<string>('');
+    const [drillSource, setDrillSource] = useState<string>('all');
     const { convert: fxConvert } = useFxRates();
 
     useEffect(() => {
@@ -302,6 +309,37 @@ export default function ConsolidatedReportsView() {
         }).format(amount);
     };
 
+    const openAccountDrillDown = useCallback((account_code: string, account_name: string) => {
+        if (!selectedCompanyIds.length) return;
+        setDrillLoading(true);
+        setDrillAccount({ code: account_code, name: account_name });
+        try {
+            // Aggregate transactions across selected companies for the chosen account
+            const all: any[] = [];
+            selectedCompanyIds.forEach(cid => {
+                const list = accountingRepository.listTransactions(cid) || [];
+                list.forEach(tx => {
+                    if (tx.accountCode === account_code) {
+                        all.push({ ...tx, companyId: cid });
+                    }
+                });
+            });
+            // Sort latest first
+            all.sort((a,b) => b.date.localeCompare(a.date));
+            setDrillTxns(all);
+        } finally {
+            setDrillLoading(false);
+        }
+    }, [selectedCompanyIds]);
+
+    const closeDrill = () => {
+        setDrillAccount(null);
+        setDrillTxns([]);
+        setDrillStart('');
+        setDrillEnd('');
+        setDrillSource('all');
+    };
+
     // Prevent hydration mismatch by not rendering dynamic content until mounted
     if (!mounted) {
         return (
@@ -518,7 +556,11 @@ export default function ConsolidatedReportsView() {
                         </thead>
                         <tbody>
                             {consolidatedData.consolidated_accounts.map((account) => (
-                                <tr key={account.account_code} className="border-b border-medium/40 hover:bg-medium/20">
+                                <tr
+                                    key={account.account_code}
+                                    className="border-b border-medium/40 hover:bg-cobalt/10 cursor-pointer"
+                                    onClick={() => openAccountDrillDown(account.account_code, account.account_name)}
+                                >
                                     <td className="py-2">
                                         <div className="font-medium">{account.account_name}</div>
                                         <div className="text-xs text-deep-navy/60">{account.account_code}</div>
@@ -601,6 +643,115 @@ export default function ConsolidatedReportsView() {
                     📊 Export Report
                 </Button>
             </div>
+            {/* Drill-down Drawer */}
+            {drillAccount && (
+                <div className="fixed inset-0 z-50 flex">
+                    <div className="flex-1 bg-black/30" onClick={closeDrill}></div>
+                    <div className="w-full sm:w-[480px] max-w-[90%] h-full bg-white shadow-xl border-l border-medium/40 flex flex-col animate-slide-in">
+                        <div className="p-4 border-b border-medium/40 flex items-center justify-between">
+                            <div>
+                                <h4 className="font-semibold text-deep-navy">{drillAccount.name}</h4>
+                                <div className="text-xs text-deep-navy/60">Account {drillAccount.code}</div>
+                            </div>
+                            <Button size="sm" variant="ghost" onClick={closeDrill}>✖</Button>
+                        </div>
+                        <div className="p-3 text-xs text-deep-navy/60 border-b border-medium/30 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <div>{drillTxns.length} transaction{drillTxns.length === 1 ? '' : 's'} across {selectedCompanyIds.length} compan{selectedCompanyIds.length === 1 ? 'y' : 'ies'}</div>
+                                {drillLoading && <div className="text-cobalt animate-pulse">Loading...</div>}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="block text-[10px] font-medium mb-1">Start</label>
+                                    <input type="date" value={drillStart} onChange={e=>setDrillStart(e.target.value)} className="w-full border rounded-lg px-2 py-1 text-xs" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-medium mb-1">End</label>
+                                    <input type="date" value={drillEnd} onChange={e=>setDrillEnd(e.target.value)} className="w-full border rounded-lg px-2 py-1 text-xs" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-medium mb-1">Source</label>
+                                    <select value={drillSource} onChange={e=>setDrillSource(e.target.value)} className="w-full border rounded-lg px-2 py-1 text-xs">
+                                        <option value="all">All Sources</option>
+                                        <option value="upload">Upload</option>
+                                        <option value="manual">Manual</option>
+                                        <option value="adjustment">Adjustment</option>
+                                        <option value="integration">Integration</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                            {drillTxns
+                              .filter(tx => !drillStart || tx.date >= drillStart)
+                              .filter(tx => !drillEnd || tx.date <= drillEnd)
+                              .filter(tx => drillSource === 'all' || tx.source === drillSource)
+                              .map(tx => (
+                                <div key={tx.id} className="p-3 rounded-lg border border-medium/40 bg-white/60 hover:bg-medium/10 transition-colors">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <div className="font-medium text-sm">{tx.date}</div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="text-xs px-2 py-0.5 rounded-full bg-gradient-to-r from-cobalt to-violet text-white">{tx.companyId}</div>
+                                            {tx.source && <span className="text-[10px] px-1.5 py-0.5 rounded bg-medium/30 text-deep-navy/70 capitalize">{tx.source}</span>}
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-deep-navy/70 mb-1 truncate">{tx.description || '—'}</div>
+                                    <div className="flex items-center justify-between text-sm">
+                                        <div className="flex gap-3">
+                                            <span className="text-emerald font-medium">{tx.debit ? formatCurrency(tx.debit) : ''}</span>
+                                            <span className="text-coral font-medium">{tx.credit ? formatCurrency(tx.credit) : ''}</span>
+                                        </div>
+                                        {tx.currency !== reportingCurrency && (
+                                            <div className="text-xs text-deep-navy/50">{tx.currency}{' '}{tx.originalDebit || tx.originalCredit}</div>
+                                        )}
+                                    </div>
+                                </div>
+                              ))}
+                            {drillTxns.length === 0 && !drillLoading && (
+                                <div className="text-center text-sm text-deep-navy/60 py-8">No transactions found for this account.</div>
+                            )}
+                        </div>
+                        <div className="p-4 border-t border-medium/40 flex gap-2">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    // Simple CSV export of visible transactions
+                                    const visible = drillTxns
+                                      .filter(t => !drillStart || t.date >= drillStart)
+                                      .filter(t => !drillEnd || t.date <= drillEnd)
+                                      .filter(t => drillSource === 'all' || t.source === drillSource);
+                                    const rows = visible.map(t => ({
+                                        id: t.id,
+                                        date: t.date,
+                                        company: t.companyId,
+                                        account: t.accountCode,
+                                        description: t.description || '',
+                                        debit: t.debit,
+                                        credit: t.credit,
+                                        currency: t.currency,
+                                        originalDebit: t.originalDebit || '',
+                                        originalCredit: t.originalCredit || ''
+                                    }));
+                                    if (!rows.length) return;
+                                    const header = Object.keys(rows[0]).join(',');
+                                    const csv = [header, ...rows.map(r => Object.values(r).join(','))].join('\n');
+                                    const blob = new Blob([csv], { type: 'text/csv' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `transactions-${drillAccount.code}.csv`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                }}
+                            >
+                                ⬇️ Export CSV
+                            </Button>
+                            <Button variant="primary" size="sm" onClick={closeDrill}>Close</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
