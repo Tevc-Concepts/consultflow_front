@@ -46,7 +46,10 @@ export interface SupportTicket extends LocalSupportTicket {
 
 export interface TicketComment extends LocalTicketComment {
   author?: 'client' | 'consultant';
+  author_name?: string;
 }
+export type DocumentComment = import('../api/localDb').LocalDocumentComment & { author_name?: string };
+export type ReportComment = import('../api/localDb').LocalReportComment & { author_name?: string };
 
 export interface ClientCompany {
   id: string;
@@ -210,6 +213,17 @@ class UnifiedClientRepository {
     throw new Error('Frappe document upload not yet implemented');
   }
 
+  async updateDocument(documentId: string, patch: Partial<ClientDocument>): Promise<ClientDocument | null> {
+    if (this.apiMode === 'local') {
+      const result = await this.apiCall('/api/local/clients', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'updateDocument', documentId, patch, userId: this.currentUserIdSafe() })
+      });
+      return result.document || null;
+    }
+    throw new Error('Frappe document update not yet implemented');
+  }
+
   async updateDocumentStatus(documentId: string, status: 'pending' | 'reviewed' | 'approved' | 'rejected', reviewedBy: string, reviewNotes?: string): Promise<boolean> {
     if (this.apiMode === 'local') {
       const result = await this.apiCall('/api/local/clients', {
@@ -286,6 +300,17 @@ class UnifiedClientRepository {
     throw new Error('Frappe report creation not yet implemented');
   }
 
+  async updateReport(reportId: string, patch: Partial<ClientReport>): Promise<ClientReport | null> {
+    if (this.apiMode === 'local') {
+      const result = await this.apiCall('/api/local/clients', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'updateReport', reportId, patch, userId: this.currentUserIdSafe() })
+      });
+      return result.report || null;
+    }
+    throw new Error('Frappe report update not yet implemented');
+  }
+
   async updateReportStatus(reportId: string, status: 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'submitted', approvedBy?: string, rejectionReason?: string): Promise<boolean> {
     if (this.apiMode === 'local') {
       const result = await this.apiCall('/api/local/clients', {
@@ -360,6 +385,17 @@ class UnifiedClientRepository {
     throw new Error('Frappe ticket creation not yet implemented');
   }
 
+  async updateTicket(ticketId: string, patch: Partial<SupportTicket>): Promise<SupportTicket | null> {
+    if (this.apiMode === 'local') {
+      const result = await this.apiCall('/api/local/clients', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'updateTicket', ticketId, patch, userId: this.currentUserIdSafe() })
+      });
+      return result.ticket || null;
+    }
+    throw new Error('Frappe ticket update not yet implemented');
+  }
+
   async updateTicketStatus(ticketId: string, status: 'open' | 'pending' | 'in_progress' | 'resolved' | 'closed'): Promise<boolean> {
     if (this.apiMode === 'local') {
       const result = await this.apiCall('/api/local/clients', {
@@ -404,6 +440,67 @@ class UnifiedClientRepository {
     }
     
     // TODO: Implement Frappe ticket comment creation
+    throw new Error('Frappe ticket comments not yet implemented');
+  }
+
+  async addDocumentComment(documentId: string, authorId: string, message: string, isInternal = false): Promise<DocumentComment> {
+    if (this.apiMode === 'local') {
+      const result = await this.apiCall('/api/local/clients', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'addDocumentComment',
+          documentId,
+          authorId,
+          message,
+          isInternal
+        })
+      });
+      return result.comment;
+    }
+    throw new Error('Frappe document comments not yet implemented');
+  }
+
+  async addReportComment(reportId: string, authorId: string, message: string, isInternal = false): Promise<ReportComment> {
+    if (this.apiMode === 'local') {
+      const result = await this.apiCall('/api/local/clients', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'addReportComment',
+          reportId,
+          authorId,
+          message,
+          isInternal
+        })
+      });
+      return result.comment;
+    }
+    throw new Error('Frappe report comments not yet implemented');
+  }
+
+  async getDocumentComments(documentId: string): Promise<DocumentComment[]> {
+    if (this.apiMode === 'local') {
+      const params = new URLSearchParams({ action: 'documentComments', documentId });
+      const result = await this.apiCall(`/api/local/clients?${params.toString()}`);
+      return result.comments || [];
+    }
+    throw new Error('Frappe document comments not yet implemented');
+  }
+
+  async getReportComments(reportId: string): Promise<ReportComment[]> {
+    if (this.apiMode === 'local') {
+      const params = new URLSearchParams({ action: 'reportComments', reportId });
+      const result = await this.apiCall(`/api/local/clients?${params.toString()}`);
+      return result.comments || [];
+    }
+    throw new Error('Frappe report comments not yet implemented');
+  }
+
+  async getTicketCommentsAsync(ticketId: string): Promise<TicketComment[]> {
+    if (this.apiMode === 'local') {
+      const params = new URLSearchParams({ action: 'ticketComments', ticketId });
+      const result = await this.apiCall(`/api/local/clients?${params.toString()}`);
+      return result.comments || [];
+    }
     throw new Error('Frappe ticket comments not yet implemented');
   }
 
@@ -486,6 +583,76 @@ class UnifiedClientRepository {
       // Data is seeded automatically when the database is created
       console.log('Demo data automatically seeded via local database');
     }
+  }
+
+  // ===== Client interaction history (local-only, transparent log) =====
+  private historyKey = 'consultflow:client:interactions';
+  private readHistory(): Record<string, Array<{ id: string; ts: string; kind: 'document'|'report'|'ticket'; companyId: string; entityId: string; type: 'create'|'update'|'status_change'|'comment'|'delete'|'attach'; userId: string; note?: string; changes?: Record<string, { from: any; to: any }>; }>> {
+    try { const raw = localStorage.getItem(this.historyKey); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+  }
+  private writeHistory(data: Record<string, any>) { try { localStorage.setItem(this.historyKey, JSON.stringify(data)); } catch {} }
+  private logToAccountingRepository(params: { kind: 'document'|'report'|'ticket'; companyId: string; entityId: string; type: 'create'|'update'|'status_change'|'comment'|'delete'|'attach'; userId: string; note?: string; changes?: Record<string, { from: any; to: any }>; timestamp: string }) {
+    try {
+      // Lazy import to avoid circular dependencies at module top level
+      const { accountingRepository } = require('@shared/repositories/accountingRepository');
+      const mapAction = (t: string): 'create'|'update'|'delete'|'status_change' => {
+        if (t === 'delete') return 'delete';
+        if (t === 'status_change') return 'status_change';
+        if (t === 'create') return 'create';
+        return 'update'; // comment/attach/update -> update
+      };
+      accountingRepository.logAudit(params.companyId, {
+        id: `audit-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+        entity: params.kind,
+        entityId: params.entityId,
+        action: mapAction(params.type),
+        timestamp: params.timestamp,
+        userId: params.userId,
+        changes: params.changes,
+        meta: params.note ? { note: params.note, eventType: params.type, userDisplayName: this.resolveUserName(params.userId) } : { eventType: params.type, userDisplayName: this.resolveUserName(params.userId) }
+      });
+    } catch {}
+  }
+
+  private resolveUserName(userId: string): string | undefined {
+    try {
+      // Try to read from persisted auth store if available
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('consultflow:auth:state:v1') : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.user?.id === userId && parsed?.user?.full_name) return parsed.user.full_name;
+      }
+    } catch {}
+    return undefined;
+  }
+  private currentUserIdSafe(): string | undefined {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('consultflow:auth:state:v1') : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return parsed?.user?.id;
+      }
+    } catch {}
+    return undefined;
+  }
+  
+  logInteraction(params: { kind: 'document'|'report'|'ticket'; companyId: string; entityId: string; type: 'create'|'update'|'status_change'|'comment'|'delete'|'attach'; userId: string; note?: string; changes?: Record<string, { from: any; to: any }>; }) {
+    const data = this.readHistory();
+    const key = `${params.kind}:${params.entityId}`;
+    const evt = { id: `hx-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, ts: new Date().toISOString(), ...params };
+    (data[key] = data[key] || []).push(evt);
+    this.writeHistory(data);
+
+    // Log the interaction to the global audit
+    this.logToAccountingRepository({ ...params, timestamp: evt.ts });
+
+    return evt.id;
+  }
+  getInteractionHistory(kind: 'document'|'report'|'ticket', entityId: string) {
+    const data = this.readHistory();
+    const key = `${kind}:${entityId}`;
+    const arr = data[key] || [];
+    return arr.sort((a,b) => b.ts.localeCompare(a.ts));
   }
 }
 

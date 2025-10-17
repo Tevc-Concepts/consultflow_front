@@ -196,6 +196,32 @@ function bootstrap(d: any) {
       FOREIGN KEY(author_id) REFERENCES users(id)
     );
     
+        -- Document comments
+        CREATE TABLE IF NOT EXISTS document_comments (
+            id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            author_id TEXT NOT NULL,
+            message TEXT NOT NULL,
+            is_internal INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY(document_id) REFERENCES documents(id),
+            FOREIGN KEY(author_id) REFERENCES users(id)
+        );
+    
+        -- Report comments
+        CREATE TABLE IF NOT EXISTS report_comments (
+            id TEXT PRIMARY KEY,
+            report_id TEXT NOT NULL,
+            author_id TEXT NOT NULL,
+            message TEXT NOT NULL,
+            is_internal INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY(report_id) REFERENCES reports(id),
+            FOREIGN KEY(author_id) REFERENCES users(id)
+        );
+    
     -- Notifications management
     CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,
@@ -862,10 +888,24 @@ export function getDocuments(companyId: string, status?: string): LocalDocument[
     return query(sql, params) as LocalDocument[];
 }
 
+export function getDocumentById(id: string): LocalDocument | null {
+    return get('SELECT * FROM documents WHERE id = ? AND is_active = 1', [id]) as LocalDocument | null;
+}
+
 export function updateDocumentStatus(documentId: string, status: 'pending' | 'reviewed' | 'approved' | 'rejected', reviewedBy: string, reviewNotes?: string): boolean {
     const res = run('UPDATE documents SET status = ?, reviewed_by = ?, review_notes = ?, updated_at = ? WHERE id = ?', 
         [status, reviewedBy, reviewNotes || null, new Date().toISOString(), documentId]);
     return res.changes > 0;
+}
+
+export function updateDocument(documentId: string, patch: Partial<LocalDocument>): LocalDocument | null {
+    const cur = get('SELECT * FROM documents WHERE id = ? AND is_active = 1', [documentId]) as LocalDocument | null;
+    if (!cur) return null;
+    const next: LocalDocument = { ...cur, ...patch, updated_at: new Date().toISOString() } as any;
+    run('UPDATE documents SET file_name = ?, description = ?, file_type = ?, file_size = ?, updated_at = ? WHERE id = ?', [
+        next.file_name, next.description || null, next.file_type, next.file_size, next.updated_at, documentId
+    ]);
+    return next;
 }
 
 export function uploadDocument(doc: Omit<LocalDocument, 'id' | 'created_at' | 'updated_at'>): LocalDocument {
@@ -906,6 +946,10 @@ export function getReports(companyId: string, status?: string): LocalReport[] {
     return query(sql, params) as LocalReport[];
 }
 
+export function getReportById(id: string): LocalReport | null {
+    return get('SELECT * FROM reports WHERE id = ? AND is_active = 1', [id]) as LocalReport | null;
+}
+
 export function createReport(report: Omit<LocalReport, 'id' | 'created_at' | 'updated_at'>): LocalReport {
     const id = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date().toISOString();
@@ -914,6 +958,16 @@ export function createReport(report: Omit<LocalReport, 'id' | 'created_at' | 'up
         [id, report.company_id, report.created_by, report.title, report.report_type, report.period, report.file_url || null, report.file_content || null, report.status || 'draft', now, now]);
     
     return { ...report, id, created_at: now, updated_at: now };
+}
+
+export function updateReport(reportId: string, patch: Partial<LocalReport>): LocalReport | null {
+    const cur = get('SELECT * FROM reports WHERE id = ? AND is_active = 1', [reportId]) as LocalReport | null;
+    if (!cur) return null;
+    const next: LocalReport = { ...cur, ...patch, updated_at: new Date().toISOString() } as any;
+    run('UPDATE reports SET title = ?, report_type = ?, period = ?, file_url = COALESCE(?, file_url), file_content = COALESCE(?, file_content), updated_at = ? WHERE id = ?', [
+        next.title, next.report_type, next.period, next.file_url, next.file_content, next.updated_at, reportId
+    ]);
+    return next;
 }
 
 export function updateReportStatus(reportId: string, status: 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'submitted', approvedBy?: string, rejectionReason?: string): boolean {
@@ -971,6 +1025,10 @@ export function getTickets(companyId: string, status?: string): LocalSupportTick
     return query(sql, params) as LocalSupportTicket[];
 }
 
+export function getTicketById(id: string): LocalSupportTicket | null {
+    return get('SELECT * FROM support_tickets WHERE id = ? AND is_active = 1', [id]) as LocalSupportTicket | null;
+}
+
 export function createTicket(ticket: Omit<LocalSupportTicket, 'id' | 'created_at' | 'updated_at'>): LocalSupportTicket {
     const id = `ticket_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date().toISOString();
@@ -998,6 +1056,16 @@ export function updateTicketStatus(ticketId: string, status: 'open' | 'pending' 
     return res.changes > 0;
 }
 
+export function updateTicket(ticketId: string, patch: Partial<LocalSupportTicket>): LocalSupportTicket | null {
+    const cur = get('SELECT * FROM support_tickets WHERE id = ? AND is_active = 1', [ticketId]) as LocalSupportTicket | null;
+    if (!cur) return null;
+    const next: LocalSupportTicket = { ...cur, ...patch, updated_at: new Date().toISOString() } as any;
+    run('UPDATE support_tickets SET subject = ?, description = ?, ticket_type = ?, priority = ?, assigned_to = COALESCE(?, assigned_to), updated_at = ? WHERE id = ?', [
+        next.subject, next.description, next.ticket_type, next.priority, next.assigned_to, next.updated_at, ticketId
+    ]);
+    return next;
+}
+
 export function getTicketComments(ticketId: string): LocalTicketComment[] {
     return query('SELECT * FROM ticket_comments WHERE ticket_id = ? AND is_active = 1 ORDER BY created_at ASC', [ticketId]) as LocalTicketComment[];
 }
@@ -1013,6 +1081,54 @@ export function addTicketComment(ticketId: string, authorId: string, message: st
     run('UPDATE support_tickets SET updated_at = ? WHERE id = ?', [now, ticketId]);
     
     return { id, ticket_id: ticketId, author_id: authorId, message, is_internal: isInternal ? 1 : 0, created_at: now, is_active: 1 };
+}
+
+// Document comment helpers
+export type LocalDocumentComment = {
+    id: string;
+    document_id: string;
+    author_id: string;
+    message: string;
+    is_internal?: number;
+    created_at: string;
+    is_active?: number;
+};
+
+export function getDocumentComments(documentId: string): LocalDocumentComment[] {
+    return query('SELECT * FROM document_comments WHERE document_id = ? AND is_active = 1 ORDER BY created_at ASC', [documentId]) as LocalDocumentComment[];
+}
+
+export function addDocumentComment(documentId: string, authorId: string, message: string, isInternal = false): LocalDocumentComment {
+    const id = `doccomment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+    run('INSERT INTO document_comments (id, document_id, author_id, message, is_internal, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)', [id, documentId, authorId, message, isInternal ? 1 : 0, now]);
+    // Touch document updated_at
+    run('UPDATE documents SET updated_at = ? WHERE id = ?', [now, documentId]);
+    return { id, document_id: documentId, author_id: authorId, message, is_internal: isInternal ? 1 : 0, created_at: now, is_active: 1 };
+}
+
+// Report comment helpers
+export type LocalReportComment = {
+    id: string;
+    report_id: string;
+    author_id: string;
+    message: string;
+    is_internal?: number;
+    created_at: string;
+    is_active?: number;
+};
+
+export function getReportComments(reportId: string): LocalReportComment[] {
+    return query('SELECT * FROM report_comments WHERE report_id = ? AND is_active = 1 ORDER BY created_at ASC', [reportId]) as LocalReportComment[];
+}
+
+export function addReportComment(reportId: string, authorId: string, message: string, isInternal = false): LocalReportComment {
+    const id = `repcomment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+    run('INSERT INTO report_comments (id, report_id, author_id, message, is_internal, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)', [id, reportId, authorId, message, isInternal ? 1 : 0, now]);
+    // Touch report updated_at
+    run('UPDATE reports SET updated_at = ? WHERE id = ?', [now, reportId]);
+    return { id, report_id: reportId, author_id: authorId, message, is_internal: isInternal ? 1 : 0, created_at: now, is_active: 1 };
 }
 
 // Notification helpers

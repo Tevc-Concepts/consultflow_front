@@ -35,6 +35,9 @@ export default function AuditPage() {
             <option value="trial_balance">Trial Balance</option>
             <option value="adjustment">Adjustment</option>
             <option value="transaction">Transaction</option>
+            <option value="document">Document</option>
+            <option value="report">Report</option>
+            <option value="ticket">Ticket</option>
           </select>
           <label className="text-xs">Action</label>
           <select value={action} onChange={e=>setAction(e.target.value)} className="border rounded-lg px-2 py-1.5">
@@ -65,8 +68,10 @@ export default function AuditPage() {
                   <td className="py-1">{new Date(ev.timestamp).toLocaleString()}</td>
                   <td>{ev.entity}</td>
                   <td>{ev.action}</td>
-                  <td>{ev.userId}</td>
+                  <td>{(ev as any).meta?.userDisplayName || ev.userId}</td>
                   <td className="truncate max-w-sm">
+                    {ev.meta?.note ? <span className="mr-2 italic text-deep-navy/70">{ev.meta.note}</span> : null}
+                    {ev.meta?.eventType ? <span className="mr-2 text-[10px] px-1 py-0.5 rounded bg-gray-100 text-gray-700">{String(ev.meta.eventType)}</span> : null}
                     {ev.changes ? Object.keys(ev.changes).map(k => `${k}: ${JSON.stringify(ev.changes![k].from)}→${JSON.stringify(ev.changes![k].to)}`).join('; ') : ''}
                   </td>
                 </tr>

@@ -5,11 +5,25 @@ import {
   getReports, 
   getTickets,
   updateDocumentStatus,
+  updateDocument,
+  uploadDocument,
   createReport,
+  updateReport,
   updateReportStatus,
+  createTicket,
+  updateTicket,
   updateTicketStatus,
   addTicketComment
 } from '@shared/api/localDb';
+import {
+  getDocumentById,
+  getReportById,
+  getTicketById,
+  addDocumentComment,
+  addReportComment
+} from '@shared/api/localDb';
+import { getDocumentComments, getReportComments, getTicketComments } from '@shared/api/localDb';
+import { getUser as getLocalUser } from '@shared/api/localDb';
 
 // GET /api/local/clients?consultantId=<id>&action=<action> OR companyId=<id>&action=<action>
 export async function GET(req: NextRequest) {
@@ -47,6 +61,39 @@ export async function GET(req: NextRequest) {
         }
         const tickets = getTickets(companyId);
         return NextResponse.json({ tickets });
+      case 'documentComments': {
+        const documentId = searchParams.get('documentId');
+        if (!documentId) {
+          return NextResponse.json({ error: 'documentId required' }, { status: 400 });
+        }
+        const comments = getDocumentComments(documentId).map(c => ({
+          ...c,
+          author_name: getLocalUser(c.author_id)?.full_name || undefined
+        }));
+        return NextResponse.json({ comments });
+      }
+      case 'reportComments': {
+        const reportId = searchParams.get('reportId');
+        if (!reportId) {
+          return NextResponse.json({ error: 'reportId required' }, { status: 400 });
+        }
+        const comments = getReportComments(reportId).map(c => ({
+          ...c,
+          author_name: getLocalUser(c.author_id)?.full_name || undefined
+        }));
+        return NextResponse.json({ comments });
+      }
+      case 'ticketComments': {
+        const ticketId = searchParams.get('ticketId');
+        if (!ticketId) {
+          return NextResponse.json({ error: 'ticketId required' }, { status: 400 });
+        }
+        const comments = getTicketComments(ticketId).map(c => ({
+          ...c,
+          author_name: getLocalUser(c.author_id)?.full_name || undefined
+        }));
+        return NextResponse.json({ comments });
+      }
         
       default:
         if (!consultantId) {
@@ -67,22 +114,79 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action, ...data } = body;
+    // Minimal user context: for demo, accept userId/role in payload when needed
+    const currentUserId: string | undefined = (data.userId as string) || undefined;
+    const currentUser = currentUserId ? getLocalUser(currentUserId) : null;
     
     switch (action) {
+      case 'uploadDocument': {
+        const created = uploadDocument(data);
+        return NextResponse.json({ document: created });
+      }
+      case 'updateDocument': {
+        const { documentId, patch } = data;
+        // Restrict updates to owner (uploaded_by) only; others must comment
+        const doc = getDocumentById(documentId);
+        if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        if (!currentUser || currentUser.id !== doc.uploaded_by) {
+          return NextResponse.json({ error: 'Forbidden: Only uploader can edit document. Add a comment instead.' }, { status: 403 });
+        }
+        const updated = updateDocument(documentId, patch);
+        if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        return NextResponse.json({ document: updated });
+      }
       case 'reviewDocument':
         const { documentId, status, reviewedBy, reviewNotes } = data;
         const success = updateDocumentStatus(documentId, status, reviewedBy, reviewNotes);
         return NextResponse.json({ success });
+      case 'addDocumentComment': {
+        const { documentId: dId, authorId, message, isInternal } = data;
+        const comment = addDocumentComment(dId, authorId, message, isInternal || false);
+        return NextResponse.json({ comment });
+      }
         
       case 'createReport':
         const newReport = createReport(data);
         return NextResponse.json({ report: newReport });
+      case 'updateReport': {
+        const { reportId, patch } = data;
+        // Restrict updates to report creator only; others must comment
+        const rep = getReportById(reportId);
+        if (!rep) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        if (!currentUser || currentUser.id !== rep.created_by) {
+          return NextResponse.json({ error: 'Forbidden: Only creator can edit report. Add a comment instead.' }, { status: 403 });
+        }
+        const updated = updateReport(reportId, patch);
+        if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        return NextResponse.json({ report: updated });
+      }
         
       case 'updateReportStatus':
         const { reportId, status: reportStatus, approvedBy, rejectionReason } = data;
         const reportSuccess = updateReportStatus(reportId, reportStatus, approvedBy, rejectionReason);
         return NextResponse.json({ success: reportSuccess });
+      case 'addReportComment': {
+        const { reportId: rId, authorId, message, isInternal } = data;
+        const comment = addReportComment(rId, authorId, message, isInternal || false);
+        return NextResponse.json({ comment });
+      }
         
+      case 'createTicket': {
+        const created = createTicket(data);
+        return NextResponse.json({ ticket: created });
+      }
+      case 'updateTicket': {
+        const { ticketId, patch } = data;
+        // Restrict updates to ticket creator only; others should comment
+        const t = getTicketById(ticketId);
+        if (!t) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        if (!currentUser || currentUser.id !== t.created_by) {
+          return NextResponse.json({ error: 'Forbidden: Only creator can edit ticket. Add a comment instead.' }, { status: 403 });
+        }
+        const updated = updateTicket(ticketId, patch);
+        if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        return NextResponse.json({ ticket: updated });
+      }
       case 'updateTicketStatus':
         const { ticketId, status: ticketStatus } = data;
         const ticketSuccess = updateTicketStatus(ticketId, ticketStatus);

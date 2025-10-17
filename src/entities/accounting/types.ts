@@ -89,7 +89,7 @@ export interface ExchangeRate {
 // Audit trail
 export interface AuditEvent {
   id: string;
-  entity: 'trial_balance' | 'adjustment' | 'transaction';
+  entity: 'trial_balance' | 'adjustment' | 'transaction' | 'document' | 'report' | 'ticket';
   entityId: string;
   action: 'create' | 'update' | 'delete' | 'status_change';
   timestamp: string;

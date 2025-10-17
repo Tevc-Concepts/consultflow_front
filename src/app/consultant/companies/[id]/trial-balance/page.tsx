@@ -149,6 +149,20 @@ export default function TrialBalancePage() {
   };
 
   const filtered = tbs.filter(t => statusFilter === 'all' ? true : t.status === statusFilter);
+  // Drill-down state for transactions
+  const [drill, setDrill] = React.useState<{ account: string; name?: string; start: string; end: string } | null>(null);
+  const [drillTx, setDrillTx] = React.useState<any[]>([]);
+  const [drillStart, setDrillStart] = React.useState<string>('');
+  const [drillEnd, setDrillEnd] = React.useState<string>('');
+  const [drillSource, setDrillSource] = React.useState<string>('all');
+  const openDrill = (tb: TrialBalance, accountCode: string) => {
+    const tx = accountingRepository.listTransactions(companyId).filter(t => t.accountCode === accountCode && t.date >= tb.periodStart && t.date <= tb.periodEnd);
+    setDrill({ account: accountCode, start: tb.periodStart, end: tb.periodEnd });
+    setDrillTx(tx.sort((a,b)=> b.date.localeCompare(a.date)));
+    setDrillStart(tb.periodStart);
+    setDrillEnd(tb.periodEnd);
+    setDrillSource('all');
+  };
   const totalDebit = entries.reduce((s, e) => s + (e.debit || 0), 0);
   const totalCredit = entries.reduce((s, e) => s + (e.credit || 0), 0);
 
@@ -317,6 +331,7 @@ export default function TrialBalancePage() {
                                     <>
                                       <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingAdj(a); setActiveTBForAdj(tb); setShowAdjModal(true); }}>Edit</Button>
                                       <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); accountingRepository.deleteTBAdjustment(companyId, tb.id, a.id); setUndoStack(st => [...st, { type: 'deleteAdjustment', tbId: tb.id, adjId: a.id, deleted: a }]); setTbs(accountingRepository.listTB(companyId)); }}>Del</Button>
+                                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openDrill(tb, a.accountCode); }}>Txns</Button>
                                     </>
                                   )}
                                 </td>
@@ -327,6 +342,40 @@ export default function TrialBalancePage() {
                             )}
                           </tbody>
                         </table>
+                        {/* Accounts Summary from TB entries */}
+                        <div className="mt-4">
+                          <div className="text-xs font-medium mb-2">Accounts</div>
+                          <table className="w-full text-[11px]">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-1">Account</th>
+                                <th className="text-right">Debit</th>
+                                <th className="text-right">Credit</th>
+                                <th className="text-right">Net</th>
+                                <th className="text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Array.from(tb.entries.reduce((map, e) => {
+                                const prev = map.get(e.accountCode) || { debit: 0, credit: 0 };
+                                prev.debit += e.debit || 0; prev.credit += e.credit || 0; map.set(e.accountCode, prev); return map;
+                              }, new Map<string, { debit: number; credit: number }>())).map(([code, sums]) => {
+                                const acc = coa.find(c => c.accountCode === code);
+                                const name = acc?.accountName || code;
+                                const net = (sums.debit || 0) - (sums.credit || 0);
+                                return (
+                                  <tr key={code} className="border-b last:border-0">
+                                    <td className="py-1">{name} <span className="text-deep-navy/50">({code})</span></td>
+                                    <td className="text-right">{sums.debit.toLocaleString()}</td>
+                                    <td className="text-right">{sums.credit.toLocaleString()}</td>
+                                    <td className={`text-right ${net >= 0 ? 'text-emerald' : 'text-coral'}`}>{net.toLocaleString()}</td>
+                                    <td className="text-right"><Button size="sm" variant="ghost" onClick={(e)=>{ e.stopPropagation(); openDrill(tb, code); }}>Txns</Button></td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -349,6 +398,91 @@ export default function TrialBalancePage() {
           baseCurrency={coa[0]?.currency || 'NGN'}
           editing={editingAdj}
         />
+      )}
+
+      {/* Drill-down Drawer */}
+      {drill && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="flex-1 bg-black/30" onClick={() => setDrill(null)}></div>
+          <div className="w-full sm:w-[520px] h-full bg-white shadow-xl border-l border-medium/40 flex flex-col">
+            <div className="p-4 border-b border-medium/40 flex items-center justify-between">
+              <div>
+                <div className="font-semibold">Transactions • {drill.account}</div>
+                <div className="text-xs text-deep-navy/60">{drill.start} → {drill.end}</div>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setDrill(null)}>✖</Button>
+            </div>
+            <div className="p-3 text-xs text-deep-navy/60 border-b border-medium/30 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-medium mb-1">Start</label>
+                  <input type="date" value={drillStart} onChange={e=>setDrillStart(e.target.value)} className="w-full border rounded-lg px-2 py-1 text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium mb-1">End</label>
+                  <input type="date" value={drillEnd} onChange={e=>setDrillEnd(e.target.value)} className="w-full border rounded-lg px-2 py-1 text-xs" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-medium mb-1">Source</label>
+                  <select value={drillSource} onChange={e=>setDrillSource(e.target.value)} className="w-full border rounded-lg px-2 py-1 text-xs">
+                    <option value="all">All Sources</option>
+                    <option value="upload">Upload</option>
+                    <option value="manual">Manual</option>
+                    <option value="adjustment">Adjustment</option>
+                    <option value="integration">Integration</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {drillTx
+                .filter(t => !drillStart || t.date >= drillStart)
+                .filter(t => !drillEnd || t.date <= drillEnd)
+                .filter(t => drillSource === 'all' || t.source === drillSource).length === 0 && (
+                  <div className="text-sm text-deep-navy/60">No transactions found.</div>
+                )}
+              {drillTx
+                .filter(t => !drillStart || t.date >= drillStart)
+                .filter(t => !drillEnd || t.date <= drillEnd)
+                .filter(t => drillSource === 'all' || t.source === drillSource)
+                .map(t => (
+                <div key={t.id} className="p-3 border rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium">{t.date}</div>
+                    <div className="text-xs text-deep-navy/60">{t.source}</div>
+                  </div>
+                  <div className="text-xs text-deep-navy/70 truncate">{t.description || '—'}</div>
+                  <div className="flex items-center justify-between text-sm mt-1">
+                    <div className="text-emerald">{t.debit ? t.debit.toLocaleString() : ''}</div>
+                    <div className="text-coral">{t.credit ? t.credit.toLocaleString() : ''}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-medium/40 flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const visible = drillTx
+                    .filter(t => !drillStart || t.date >= drillStart)
+                    .filter(t => !drillEnd || t.date <= drillEnd)
+                    .filter(t => drillSource === 'all' || t.source === drillSource);
+                  if (!visible.length) return;
+                  const rows = visible.map(t => ({ id: t.id, date: t.date, account: t.accountCode, description: t.description || '', debit: t.debit, credit: t.credit, source: t.source }));
+                  const header = Object.keys(rows[0]).join(',');
+                  const csv = [header, ...rows.map(r => Object.values(r).join(','))].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a'); a.href = url; a.download = `tb-transactions-${drill?.account}.csv`; a.click(); URL.revokeObjectURL(url);
+                }}
+              >
+                ⬇️ Export CSV
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => setDrill(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

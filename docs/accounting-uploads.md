@@ -81,6 +81,18 @@ The following roadmap items have been delivered:
 - Rate Caching Stub: in‑memory helper (`rateCache.ts`) enabling last‑known lookup (future external fetch integration point).
 - Expanded Tests: validation (zero & parent filter), adjustment aggregation, FX fallback scenario.
 
+### Client CRUD & Transparency (Consultant role)
+- Clients page now supports consultant-side CRUD for:
+  - Documents: create, review (approve/reject), history view per item.
+  - Reports: create/submit/approve with history.
+  - Support tickets: create/resolve and history.
+- Interaction History: local-first log stored via repository (mirrors an audit trail) and visible per item (📜 History).
+
+### Trial Balance Transaction Drill-Down
+- From the Trial Balance page, you can drill down to transactions by account within a TB period:
+  - “Txns” on adjustments and on each account in the accounts table.
+  - Drawer includes date range and source filters plus CSV export of visible rows.
+
 ## 8. Permissions & Status Rules
 | Status | Edit Entries | Add/Edit Adj | Delete Adj | Lock Allowed | Notes |
 |--------|--------------|--------------|------------|--------------|-------|
